@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../models/movie.dart';
 import '../theme.dart';
 import '../widgets/common_widgets.dart';
+import 'review_screen.dart';
 
 class MovieDetailsScreen extends StatelessWidget {
   final Movie movie;
@@ -62,7 +63,7 @@ class MovieDetailsScreen extends StatelessWidget {
                   ],
                 ),
                 const SizedBox(height: 16),
-                _ratingCard(),
+                _ratingCard(context),
                 const SizedBox(height: 14),
                 _primaryButton(),
                 const SizedBox(height: 10),
@@ -186,7 +187,7 @@ class MovieDetailsScreen extends StatelessWidget {
     );
   }
 
-  Widget _ratingCard() {
+  Widget _ratingCard(BuildContext context) {
     return _card(
       padding: const EdgeInsets.all(10),
       child: Column(
@@ -228,25 +229,32 @@ class MovieDetailsScreen extends StatelessWidget {
             ],
           ),
           const Divider(height: 20, color: AppColors.border),
-          const Row(
-            children: [
-              Icon(Icons.star_border, color: AppColors.textSecondary),
-              SizedBox(width: 12),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text('Sua Nota',
-                        style: TextStyle(
-                            fontSize: 13, fontWeight: FontWeight.w700)),
-                    Text('Toque para avaliar',
-                        style: TextStyle(
-                            fontSize: 11, color: AppColors.textSecondary)),
-                  ],
+          InkWell(
+            borderRadius: BorderRadius.circular(8),
+            onTap: () => Navigator.push(
+              context,
+              MaterialPageRoute(builder: (_) => ReviewScreen(movie: movie)),
+            ),
+            child: const Row(
+              children: [
+                Icon(Icons.star_border, color: AppColors.textSecondary),
+                SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text('Sua Nota',
+                          style: TextStyle(
+                              fontSize: 13, fontWeight: FontWeight.w700)),
+                      Text('Toque para avaliar',
+                          style: TextStyle(
+                              fontSize: 11, color: AppColors.textSecondary)),
+                    ],
+                  ),
                 ),
-              ),
-              Icon(Icons.chevron_right, color: AppColors.textSecondary),
-            ],
+                Icon(Icons.chevron_right, color: AppColors.textSecondary),
+              ],
+            ),
           ),
         ],
       ),
