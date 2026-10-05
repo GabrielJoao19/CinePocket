@@ -1,17 +1,14 @@
 import 'package:flutter/material.dart';
 import '../models/movie.dart';
+import '../navigation/route_names.dart';
 import '../theme.dart';
 import '../widgets/common_widgets.dart';
-import 'movie_details_screen.dart';
 
 /// Largura a partir da qual usamos o layout de tablet/desktop.
 const double kWideBreakpoint = 600;
 
 void _openDetails(BuildContext context, Movie movie) {
-  Navigator.push(
-    context,
-    MaterialPageRoute(builder: (_) => MovieDetailsScreen(movie: movie)),
-  );
+  openMovieDetails(context, movie);
 }
 
 // ============================================================

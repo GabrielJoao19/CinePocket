@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../models/movie.dart';
+import '../navigation/route_names.dart';
 import '../theme.dart';
 import '../widgets/common_widgets.dart';
 
@@ -59,7 +60,7 @@ class FavoritesScreen extends StatelessWidget {
           _filters(),
           const SizedBox(height: 14),
           for (final m in favoriteMovies) ...[
-            _favoriteCard(m),
+            _favoriteCard(context, m),
             const SizedBox(height: 10),
           ],
           const SizedBox(height: 6),
@@ -109,16 +110,21 @@ class FavoritesScreen extends StatelessWidget {
     );
   }
 
-  Widget _favoriteCard(Movie m) {
-    return Container(
-      padding: const EdgeInsets.all(10),
-      decoration: BoxDecoration(
-        color: AppColors.surface,
+  Widget _favoriteCard(BuildContext context, Movie m) {
+    return Card(
+      margin: EdgeInsets.zero,
+      color: AppColors.surface,
+      clipBehavior: Clip.antiAlias,
+      shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: AppColors.border),
+        side: const BorderSide(color: AppColors.border),
       ),
-      child: Column(
-        children: [
+      child: InkWell(
+        onTap: () => openMovieDetails(context, m),
+        child: Padding(
+          padding: const EdgeInsets.all(10),
+          child: Column(
+            children: [
           Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
@@ -174,6 +180,8 @@ class FavoritesScreen extends StatelessWidget {
             ],
           ),
         ],
+      ),
+        ),
       ),
     );
   }

@@ -234,8 +234,14 @@ class _MovieDetailsScreenState extends State<MovieDetailsScreen> {
   Widget build(BuildContext context) {
     final original =
         movie.originalTitle.isNotEmpty ? movie.originalTitle : movie.title;
-    return Scaffold(
-      body: ListView(
+    return PopScope(
+      canPop: false,
+      onPopInvokedWithResult: (didPop, result) {
+        if (didPop) return;
+        Navigator.of(context).pop(_favorite);
+      },
+      child: Scaffold(
+        body: ListView(
         padding: EdgeInsets.zero,
         children: [
           _banner(context),
@@ -314,7 +320,8 @@ class _MovieDetailsScreenState extends State<MovieDetailsScreen> {
           ),
         ],
       ),
-    );
+    ),
+  );
   }
 
   Widget _banner(BuildContext context) {
@@ -338,7 +345,7 @@ class _MovieDetailsScreenState extends State<MovieDetailsScreen> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     _circleButton(Icons.arrow_back,
-                        onTap: () => Navigator.pop(context)),
+                        onTap: () => Navigator.pop(context, _favorite)),
                     _circleButton(Icons.share_outlined),
                   ],
                 ),

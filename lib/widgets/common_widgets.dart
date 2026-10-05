@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../navigation/route_names.dart';
 import '../theme.dart';
 
 /// Placeholder de pôster (gradiente + ícone). Futuramente: Image.network(TMDB).
@@ -125,7 +126,7 @@ class GenreTag extends StatelessWidget {
   }
 }
 
-/// Barra superior com logo CinePocket e ícone de perfil.
+/// Barra superior com logo CinePocket e abertura do Drawer.
 class CineAppBar extends StatelessWidget implements PreferredSizeWidget {
   const CineAppBar({super.key});
 
@@ -135,7 +136,12 @@ class CineAppBar extends StatelessWidget implements PreferredSizeWidget {
   @override
   Widget build(BuildContext context) {
     return AppBar(
-      titleSpacing: 16,
+      titleSpacing: 0,
+      leading: IconButton(
+        icon: const Icon(Icons.menu, color: AppColors.yellow),
+        tooltip: 'Menu',
+        onPressed: () => shellScaffoldKey.currentState?.openDrawer(),
+      ),
       title: const Row(
         children: [
           Icon(Icons.movie_creation, color: AppColors.yellow, size: 22),
@@ -150,9 +156,14 @@ class CineAppBar extends StatelessWidget implements PreferredSizeWidget {
           ),
         ],
       ),
-      actions: const [
-        Icon(Icons.account_circle_outlined, color: AppColors.textSecondary),
-        SizedBox(width: 16),
+      actions: [
+        IconButton(
+          icon: const Icon(Icons.account_circle_outlined,
+              color: AppColors.textSecondary),
+          tooltip: 'Perfil',
+          onPressed: () => shellScaffoldKey.currentState?.openDrawer(),
+        ),
+        const SizedBox(width: 8),
       ],
     );
   }
