@@ -14,8 +14,8 @@ class FavoritesScreen extends StatelessWidget {
       body: ListView(
         padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
         children: [
-          Row(
-            children: const [
+          const Row(
+            children: [
               Icon(Icons.favorite, color: AppColors.yellow, size: 22),
               SizedBox(width: 8),
               Text('Meus Favoritos',
@@ -85,7 +85,7 @@ class FavoritesScreen extends StatelessWidget {
             alignment: Alignment.center,
             decoration: BoxDecoration(
               color: selected
-                  ? AppColors.yellow.withOpacity(0.15)
+                  ? AppColors.yellow.withValues(alpha: 0.15)
                   : AppColors.surface,
               borderRadius: BorderRadius.circular(16),
               border: Border.all(

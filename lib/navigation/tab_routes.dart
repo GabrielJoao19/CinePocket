@@ -22,7 +22,10 @@ class TabRoutes {
         // Leitura dos ARGUMENTS passados em pushNamed(..., arguments: movie)
         final args = settings.arguments;
         final movie = args is Movie ? args : featuredMovies.first;
-        return _page(settings, MovieDetailsScreen(movie: movie));
+        return MaterialPageRoute<bool>(
+          settings: settings,
+          builder: (_) => MovieDetailsScreen(movie: movie),
+        );
 
       default:
         return _page(

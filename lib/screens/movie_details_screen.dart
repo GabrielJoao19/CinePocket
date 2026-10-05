@@ -234,14 +234,8 @@ class _MovieDetailsScreenState extends State<MovieDetailsScreen> {
   Widget build(BuildContext context) {
     final original =
         movie.originalTitle.isNotEmpty ? movie.originalTitle : movie.title;
-    return PopScope(
-      canPop: false,
-      onPopInvokedWithResult: (didPop, result) {
-        if (didPop) return;
-        Navigator.of(context).pop(_favorite);
-      },
-      child: Scaffold(
-        body: ListView(
+    return Scaffold(
+      body: ListView(
         padding: EdgeInsets.zero,
         children: [
           _banner(context),
@@ -320,37 +314,36 @@ class _MovieDetailsScreenState extends State<MovieDetailsScreen> {
           ),
         ],
       ),
-    ),
-  );
+    );
   }
 
   Widget _banner(BuildContext context) {
-    // Duplo toque em qualquer parte do banner favorita o filme.
-    return GestureDetector(
-      onDoubleTap: _toggleFavorite,
-      child: SizedBox(
-        height: 250,
-        child: Stack(
-          fit: StackFit.expand,
-          children: [
-            PosterPlaceholder(
+    return SizedBox(
+      height: 250,
+      child: Stack(
+        fit: StackFit.expand,
+        children: [
+          GestureDetector(
+            onDoubleTap: _toggleFavorite,
+            child: PosterPlaceholder(
               colors: movie.colors,
               borderRadius: BorderRadius.zero,
             ),
-            SafeArea(
-              child: Padding(
-                padding: const EdgeInsets.all(8),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    _circleButton(Icons.arrow_back,
-                        onTap: () => Navigator.pop(context, _favorite)),
-                    _circleButton(Icons.share_outlined),
-                  ],
-                ),
+          ),
+          SafeArea(
+            child: Padding(
+              padding: const EdgeInsets.all(8),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  _circleButton(Icons.arrow_back,
+                      onTap: () => Navigator.pop(context, _favorite)),
+                  _circleButton(Icons.share_outlined),
+                ],
               ),
             ),
+          ),
             // Indicador animado do estado de favorito.
             Positioned(
               left: 16,
@@ -397,8 +390,7 @@ class _MovieDetailsScreenState extends State<MovieDetailsScreen> {
             ),
           ],
         ),
-      ),
-    );
+      );
   }
 
   Widget _circleButton(IconData icon, {VoidCallback? onTap}) {

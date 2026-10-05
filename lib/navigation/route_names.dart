@@ -23,12 +23,12 @@ final GlobalKey<ScaffoldState> shellScaffoldKey = GlobalKey<ScaffoldState>();
 ///  - RESULTADO: a tela de detalhes devolve um `bool` (favoritado?) via
 ///    `Navigator.pop(context, valor)`, que chega aqui no `await`.
 Future<void> openMovieDetails(BuildContext context, Movie movie) async {
-  final favorited = await Navigator.of(context).pushNamed<bool>(
+  final result = await Navigator.of(context).pushNamed(
     RouteNames.details,
     arguments: movie,
   );
 
-  if (favorited == true && context.mounted) {
+  if (result == true && context.mounted) {
     ScaffoldMessenger.of(context)
       ..hideCurrentSnackBar()
       ..showSnackBar(SnackBar(

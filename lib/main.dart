@@ -2,7 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'navigation/route_names.dart';
 import 'navigation/tab_routes.dart';
+import 'models/movie.dart';
 import 'screens/login_screen.dart';
+import 'screens/movie_details_screen.dart';
 import 'screens/settings_screen.dart';
 import 'theme.dart';
 
@@ -31,6 +33,11 @@ class CinePocketApp extends StatelessWidget {
           final args = ModalRoute.of(context)?.settings.arguments;
           final currentName = args is String ? args : 'João Gabriel';
           return SettingsScreen(currentName: currentName);
+        },
+        RouteNames.details: (context) {
+          final args = ModalRoute.of(context)?.settings.arguments;
+          final movie = args is Movie ? args : featuredMovies.first;
+          return MovieDetailsScreen(movie: movie);
         },
       },
     );
@@ -70,7 +77,7 @@ class _MainShellState extends State<MainShell> {
   ///  - Configurações (com push e retorno de resultado)
   ///  - Sobre (modal de diálogo)
   ///  - Logout (com pushReplacement para /login)
-  Widget _buildDrawer(BuildContext context) {
+  Widget _buildDrawer() {
     return Drawer(
       backgroundColor: AppColors.surface,
       child: ListView(
@@ -113,7 +120,8 @@ class _MainShellState extends State<MainShell> {
                 RouteNames.settings,
                 arguments: _userName,
               );
-              if (result != null && mounted) {
+              if (!mounted) return;
+              if (result != null) {
                 setState(() => _userName = result);
                 ScaffoldMessenger.of(context)
                   ..hideCurrentSnackBar()
@@ -208,7 +216,7 @@ class _MainShellState extends State<MainShell> {
       },
       child: Scaffold(
         key: shellScaffoldKey,
-        drawer: _buildDrawer(context),
+        drawer: _buildDrawer(),
         // 3. IndexedStack preserva a pilha e estado de cada aba ao alternar
         body: IndexedStack(
           index: _currentIndex,

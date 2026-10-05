@@ -55,7 +55,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
             contentPadding: EdgeInsets.zero,
             title: const Text('Notificações de lançamentos'),
             value: _notifications,
-            activeColor: AppColors.yellow,
+            activeThumbColor: AppColors.yellow,
             onChanged: (v) => setState(() => _notifications = v),
           ),
           const SizedBox(height: 20),
