@@ -41,9 +41,9 @@ compartilhar opiniões e decidir o que assistir em seguida.
 
 ![Tela inicial do CinePocket](docs/images/tela-inicial.png)
 
-### Busca e detalhes do filme
+### Detalhes do filme!
 
-![Busca e detalhes do filme no CinePocket](docs/images/busca-e-detalhes.png)
+![Busca e detalhes do filme no CinePocket](docs/images/filme.png)
 
 ### Favoritos e avaliações
 
@@ -53,4 +53,4 @@ compartilhar opiniões e decidir o que assistir em seguida.
 
 Confira o protótipo e o design das telas no Figma:
 
-[Acessar o projeto no Figma](COLE_AQUI_O_LINK_DO_FIGMA)
+[Acessar o projeto no Figma](https://www.figma.com/design/76YfCCueANLcsmkFRGOohV/Mobile?node-id=0-1&p=f&t=inGqQ2fY1eoa01DK-0)
