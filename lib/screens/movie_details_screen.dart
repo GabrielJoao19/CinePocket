@@ -338,8 +338,14 @@ class _MovieDetailsScreenState extends State<MovieDetailsScreen> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   _circleButton(Icons.arrow_back,
-                      onTap: () => Navigator.pop(context, _favorite)),
-                  _circleButton(Icons.share_outlined),
+                      onTap: () {
+                        debugPrint(
+                          'POP: saindo dos detalhes de "${movie.title}" com resultado: $_favorite',
+                        );
+
+                        Navigator.pop(context, _favorite);
+                      },
+                  ),
                 ],
               ),
             ),

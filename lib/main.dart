@@ -116,12 +116,12 @@ class _MainShellState extends State<MainShell> {
             onTap: () async {
               Navigator.pop(context); // fecha o drawer
               // 2 e 5. Push com argumentos e recebimento de resultado via pop
-              final result = await Navigator.of(context).pushNamed<String>(
+              final result = await Navigator.of(context).pushNamed(
                 RouteNames.settings,
                 arguments: _userName,
               );
               if (!mounted) return;
-              if (result != null) {
+              if (result is String) {
                 setState(() => _userName = result);
                 ScaffoldMessenger.of(context)
                   ..hideCurrentSnackBar()
