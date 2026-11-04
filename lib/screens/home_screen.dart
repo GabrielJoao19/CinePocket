@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 import '../models/movie.dart';
 import '../navigation/route_names.dart';
+import '../providers/favorites_provider.dart';
 import '../theme.dart';
 import '../widgets/common_widgets.dart';
 
@@ -369,14 +371,30 @@ class PopularCard extends StatelessWidget {
                     PosterPlaceholder(colors: movie.colors),
                     Positioned(
                         top: 6, left: 6, child: RatingBadge(movie.rating)),
-                    const Positioned(
-                      bottom: 6,
-                      right: 6,
-                      child: CircleAvatar(
-                        radius: 13,
-                        backgroundColor: Colors.black54,
-                        child: Icon(Icons.favorite_border,
-                            size: 14, color: Colors.white70),
+                    Positioned(
+                      bottom: 2,
+                      right: 2,
+                      child: Consumer<FavoritesProvider>(
+                        builder: (context, favorites, _) => IconButton(
+                          tooltip: favorites.isFavorite(movie)
+                              ? 'Remover dos favoritos'
+                              : 'Adicionar aos favoritos',
+                          icon: Icon(
+                            favorites.isFavorite(movie)
+                                ? Icons.favorite
+                                : Icons.favorite_border,
+                            size: 18,
+                            color: favorites.isFavorite(movie)
+                                ? AppColors.heart
+                                : Colors.white70,
+                          ),
+                          style: IconButton.styleFrom(
+                            backgroundColor: Colors.black54,
+                            minimumSize: const Size(32, 32),
+                            padding: EdgeInsets.zero,
+                          ),
+                          onPressed: () => favorites.toggleFavorite(movie),
+                        ),
                       ),
                     ),
                   ],

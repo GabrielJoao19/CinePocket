@@ -1,15 +1,22 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:provider/provider.dart';
 import 'navigation/route_names.dart';
 import 'navigation/tab_routes.dart';
 import 'models/movie.dart';
+import 'providers/favorites_provider.dart';
 import 'screens/login_screen.dart';
 import 'screens/movie_details_screen.dart';
 import 'screens/settings_screen.dart';
 import 'theme.dart';
 
 void main() {
-  runApp(const CinePocketApp());
+  runApp(
+    ChangeNotifierProvider(
+      create: (_) => FavoritesProvider(),
+      child: const CinePocketApp(),
+    ),
+  );
 }
 
 /// Aplicativo principal com mapeamento centralizado de rotas nomeadas.

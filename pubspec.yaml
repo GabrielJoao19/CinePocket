@@ -1,14 +1,15 @@
 name: cinepocket
 description: Catálogo de filmes CinePocket (somente layout, sem API ainda).
-publish_to: 'none'
+publish_to: "none"
 version: 1.0.0+1
 
 environment:
-  sdk: '>=3.0.0 <4.0.0'
+  sdk: ">=3.0.0 <4.0.0"
 
 dependencies:
   flutter:
     sdk: flutter
+  provider: ^6.1.2
 
 dev_dependencies:
   flutter_test:
