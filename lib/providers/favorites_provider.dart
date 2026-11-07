@@ -1,22 +1,25 @@
 import 'package:flutter/foundation.dart';
-
 import '../models/movie.dart';
 
-/// Mantém os favoritos da sessão enquanto a API e a persistência não existem.
+/// Fonte única dos favoritos da sessão. Não persiste após reiniciar o app.
 class FavoritesProvider extends ChangeNotifier {
-  final Set<String> _favoriteTitles =
-      favoriteMovies.map((movie) => movie.title).toSet();
+  final Map<String, Movie> _movies = {
+    for (final movie in favoriteMovies) movie.title: movie,
+  };
 
-  int get count => _favoriteTitles.length;
+  int get count => _movies.length;
+  List<Movie> get movies => List.unmodifiable(_movies.values);
+  bool isFavorite(Movie movie) => _movies.containsKey(movie.title);
 
-  bool isFavorite(Movie movie) => _favoriteTitles.contains(movie.title);
-
-  void toggleFavorite(Movie movie) {
-    if (isFavorite(movie)) {
-      _favoriteTitles.remove(movie.title);
+  void setFavorite(Movie movie, bool value) {
+    if (isFavorite(movie) == value) return;
+    if (value) {
+      _movies[movie.title] = movie;
     } else {
-      _favoriteTitles.add(movie.title);
+      _movies.remove(movie.title);
     }
     notifyListeners();
   }
+
+  void toggleFavorite(Movie movie) => setFavorite(movie, !isFavorite(movie));
 }

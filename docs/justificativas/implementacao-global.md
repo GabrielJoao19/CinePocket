@@ -1,125 +1,61 @@
 # Implementação da gerência de estado
 
-## 1. Abordagem escolhida
+## Abordagem escolhida
 
-Para refatorar o aplicativo CinePocket, foi escolhido o uso de **Provider + ChangeNotifier**.
+Provider + ChangeNotifier. O FavoritesProvider, separado da UI em lib/providers/favorites_provider.dart, é a fonte única dos favoritos da sessão. O ChangeNotifierProvider envolve o aplicativo em lib/main.dart.
 
-Foi criado o `FavoritesProvider`, responsável por guardar os filmes favoritos e informar quando essa lista é alterada. Esse provider é disponibilizado para todo o aplicativo por meio do `ChangeNotifierProvider`, configurado no `main.dart`.
+## Justificativa da escolha
 
-## 2. Justificativa da escolha
+Provider permite compartilhar o estado com pouca estrutura e sem geração de código, adequado ao tamanho deste aplicativo. Cubit também resolveria o problema, mas introduziria a estrutura e os conceitos do Bloc sem necessidade neste escopo. MobX exigiria stores observáveis e geração de código. Provider foi escolhido pela simplicidade de leitura e manutenção.
 
-O Provider + ChangeNotifier foi escolhido por ser uma solução simples de aprender e fácil de acompanhar durante a leitura do código. A lógica dos favoritos fica reunida em uma classe, enquanto os widgets apenas consultam os dados e reagem às mudanças.
+## Antes: estado local com setState
 
-Essa opção também foi mais adequada ao tamanho e ao objetivo do CinePocket. Em comparação com o Cubit/Bloc, ela exige menos estrutura inicial e menos conceitos para começar. Em comparação com o MobX, não depende de ferramentas complexas nem de geradores de código. Assim, foi possível organizar o estado usando recursos que já fazem parte do próprio código Dart e do Flutter, com uma implementação mais direta.
+Na versão original do PR (commit 181f093817af622b0ddd1f008037cdda6ea35be9), a tela de detalhes guardava bool _favorite e alterava esse valor com setState. Favoritar Duna atualizava o coração e o botão daquela tela, mas o contador da AppBar continuava em 5 e a lista de favoritos continuava fixa. O PR já possuía Provider nos cards da Home e no contador; estas capturas documentam a parte local que ainda precisava ser migrada, conforme a refatoração parcial permitida na atividade.
 
-## 3. Principal dificuldade encontrada
+![Antes: Duna favoritado nos detalhes usando setState](estado-global/antes-setstate.png)
 
-A principal dificuldade foi entender onde colocar o `ChangeNotifierProvider` e como fazer os widgets encontrarem o `FavoritesProvider`. Ele precisava ficar em um ponto acima das telas que usam os favoritos. Por isso, foi colocado no `main.dart`, envolvendo o `CinePocketApp`.
+![Antes: contador permanece em 5 após favoritar Duna nos detalhes](estado-global/antes-contador.png)
 
-Também foi necessário aprender a usar o `Consumer` para atualizar somente as partes da tela que dependem dessa informação. Por exemplo, o botão de favorito no card do filme usa o `Consumer` para mudar o ícone e a cor quando o filme é adicionado ou removido.
+## Depois: estado compartilhado e reativo
 
-## 4. Principal vantagem sobre o `setState`
+O provider mantém um mapa de filmes, identificado pelo título no catálogo simulado, e expõe count, movies, isFavorite, setFavorite e toggleFavorite. A lista retornada é imutável. As operações adicionam ou removem um filme e chamam notifyListeners somente quando há alteração.
 
-A principal vantagem foi não precisar passar a lista de favoritos de uma tela ou widget para outro manualmente. Antes, usando apenas `setState`, seria necessário encontrar uma forma de levar essa informação entre os componentes que precisam dela.
+A Home e a AppBar usam Consumer. Meus Favoritos e a tela de detalhes usam context.watch para reconstruir a UI, e context.read nos comandos. Favoritar nos detalhes, dar uma avaliação alta ou limpar tudo modifica o mesmo provider. Também é possível remover um filme diretamente da lista. Ao reabrir os detalhes, o favorito é consultado na fonte compartilhada.
 
-Agora, o `FavoritesProvider` funciona como um ponto compartilhado. Quando o usuário toca no botão de favorito, o provider altera a lista e chama `notifyListeners()`. Os widgets que usam o `Consumer` percebem essa mudança e se atualizam automaticamente.
+O estado do formulário (texto, nota ainda não enviada e carregamento) permanece local. A refatoração parcial migra os favoritos, compartilhados entre as telas; não é necessário globalizar cada estado efêmero de interação.
 
-Na prática, isso permite que o botão do filme e a `AppBar` conversem com o mesmo estado: o botão muda para indicar que o filme foi favoritado, e o contador de favoritos da `AppBar` é atualizado sem que seja necessário conectar esses widgets manualmente.
+![Depois: botão e coração dos detalhes refletem o Provider](estado-global/depois-detalhes.png)
 
-## 5. Como a implementação atende aos requisitos
+![Depois: ao voltar à Home, o contador passou de 5 para 6](estado-global/depois-contador.png)
 
-### 5.1 Estado compartilhado separado da UI
+![Depois: Duna aparece na lista e o contador da mesma tela mostra 6](estado-global/depois-lista.png)
 
-O estado dos favoritos foi colocado na classe `FavoritesProvider`, em [lib/providers/favorites_provider.dart](../../lib/providers/favorites_provider.dart#L6). Essa classe não desenha telas. Ela apenas mantém os títulos favoritos e oferece operações para consultar e alterar esse estado:
+## Principal dificuldade
 
-```dart
-class FavoritesProvider extends ChangeNotifier {
-	final Set<String> _favoriteTitles = ...;
+Identificar todos os caminhos que alteravam favoritos: botão dos cards, botão e gesto nos detalhes, avaliação com nota alta e limpeza. Manter uma variável local nos detalhes produziria duas fontes de verdade. A solução foi centralizar as operações no provider e consumir a mesma instância acima dos navegadores das abas.
 
-	int get count => _favoriteTitles.length;
+## Vantagem sobre setState
 
-	bool isFavorite(Movie movie) => _favoriteTitles.contains(movie.title);
-}
-```
+Uma alteração atualiza os widgets interessados em telas distintas sem passar listas e callbacks pela navegação. A regra de favoritos pode ser exercitada independentemente da apresentação e fica concentrada em uma classe.
 
-Essa separação é importante porque a regra dos favoritos não fica presa a um card específico. Qualquer widget que tenha acesso ao provider pode consultar a quantidade de favoritos ou verificar se um filme está marcado.
+## Validação e requisitos
 
-### 5.2 Provider disponibilizado para a aplicação
+1. Estado separado da UI: FavoritesProvider estende ChangeNotifier.
+2. Consumo apropriado: Consumer e context.watch.
+3. Reatividade em múltiplos locais: coração/botão, contador e lista de favoritos.
+4. Modificação pela UI: favoritar nos cards e detalhes, remover na lista.
+5. Separação de responsabilidades: operações de favoritos no provider; widgets apresentam o estado e disparam comandos.
 
-Em [lib/main.dart](../../lib/main.dart#L12-L18), o `ChangeNotifierProvider` envolve o `CinePocketApp`:
+O fluxo foi executado em Flutter Web no Chromium, com janela de 430 x 932, em 7 de novembro de 2026. Primeiro foi capturado o comportamento original do PR; depois, o mesmo fluxo refatorado. As imagens são capturas reais do aplicativo executado.
 
-```dart
-runApp(
-	ChangeNotifierProvider(
-		create: (_) => FavoritesProvider(),
-		child: const CinePocketApp(),
-	),
-);
-```
+Testes automatizados: navegação de detalhes e retorno; navegação entre abas e drawer; inclusão de Duna nos detalhes, atualização da lista compartilhada e remoção pela lista. Resultado: 3 testes aprovados e flutter analyze sem problemas. Ambiente: Flutter 3.47.9 e Dart 3.13.7. Comandos: flutter test e flutter analyze.
 
-O provider foi colocado nesse nível porque a `AppBar` e os cards de filmes precisam acessar o mesmo objeto. Assim, eles leem a mesma fonte de dados, em vez de cada parte da interface possuir uma cópia diferente da lista.
+Os favoritos começam com 5 filmes simulados e duram apenas durante a sessão. Não há persistência em disco ou API. O título identifica o filme neste catálogo simples; uma API real deverá fornecer um ID estável.
 
-### 5.3 UI consumindo o estado com `Consumer`
+## Execução em contêiner
 
-O aplicativo usa o mecanismo apropriado do Provider: `Consumer<FavoritesProvider>`. No botão de favorito do card, em [lib/screens/home_screen.dart](../../lib/screens/home_screen.dart#L371-L397), o `Consumer` lê o provider e escolhe o ícone, a cor e a mensagem do botão:
+Use o Dockerfile.flutter na raiz: docker build -f Dockerfile.flutter -t cinepocket-flutter . e docker run --rm -p 8080:8080 cinepocket-flutter. Abra http://localhost:8080. Para testar: docker run --rm cinepocket-flutter flutter test. Para analisar: docker run --rm cinepocket-flutter flutter analyze.
 
-```dart
-Consumer<FavoritesProvider>(
-	builder: (context, favorites, _) => IconButton(
-		tooltip: favorites.isFavorite(movie)
-				? 'Remover dos favoritos'
-				: 'Adicionar aos favoritos',
-		icon: Icon(
-			favorites.isFavorite(movie)
-					? Icons.favorite
-					: Icons.favorite_border,
-		),
-	),
-)
-```
+Em redes com proxy corporativo, configure o proxy e os certificados de confiança no contêiner conforme seu ambiente. A validação desta entrega utilizou um contêiner Ubuntu 24.04 com Flutter instalado, cache e fonte do projeto montados no espaço de trabalho.
 
-No `Consumer`, o parâmetro `favorites` representa o estado compartilhado. Quando esse estado muda, somente a parte da interface envolvida pelo `Consumer` precisa ser reconstruída.
-
-### 5.4 Dois locais reagindo à mesma mudança
-
-Há pelo menos dois locais da UI que reagem à alteração dos favoritos:
-
-1. O botão de favorito em [lib/screens/home_screen.dart](../../lib/screens/home_screen.dart#L371-L397) muda entre `favorite` e `favorite_border` e também altera a cor.
-2. O contador da `AppBar`, em [lib/widgets/common_widgets.dart](../../lib/widgets/common_widgets.dart#L159-L166), usa `favorites.count` para exibir a quantidade atual no `Badge`.
-
-Quando um filme é favoritado, os dois locais recebem a atualização do mesmo provider. Isso demonstra que o estado está realmente compartilhado: o card mostra a nova situação do filme e a `AppBar` atualiza a quantidade sem receber dados por parâmetros.
-
-### 5.5 Estado alterado a partir da UI
-
-O usuário modifica o estado ao tocar no botão do card. O callback chama o método do provider, em vez de alterar diretamente uma variável dentro do widget:
-
-```dart
-onPressed: () => favorites.toggleFavorite(movie),
-```
-
-Esse método, em [lib/providers/favorites_provider.dart](../../lib/providers/favorites_provider.dart#L12-L20), adiciona ou remove o filme e depois chama `notifyListeners()`:
-
-```dart
-void toggleFavorite(Movie movie) {
-	if (isFavorite(movie)) {
-		_favoriteTitles.remove(movie.title);
-	} else {
-		_favoriteTitles.add(movie.title);
-	}
-	notifyListeners();
-}
-```
-
-O `notifyListeners()` avisa aos `Consumer`s que o estado mudou. Com isso, a ação começa na UI, a regra é executada no provider e os elementos interessados são atualizados automaticamente.
-
-### 5.6 Separação de responsabilidades e código limpo
-
-A implementação mantém responsabilidades bem definidas:
-
-- `FavoritesProvider`: guarda os dados, verifica se um filme é favorito e altera a coleção.
-- `PopularCard`: apresenta o filme e dispara a ação quando o usuário toca no botão.
-- `CineAppBar`: apresenta a quantidade de favoritos.
-- `ChangeNotifierProvider`: disponibiliza o estado para a árvore de widgets.
-- `Consumer`: conecta cada parte da UI ao estado que ela precisa observar.
-
-Esse desenho remove a lógica de estado dos widgets. Os widgets não precisam conhecer como os favoritos são armazenados; eles apenas solicitam a informação necessária e chamam a operação apropriada. Isso facilita a manutenção e permite trocar a forma de persistência no futuro sem reescrever toda a interface.
+[PDF comparativo para entrega](comparativo-estado-global.pdf)

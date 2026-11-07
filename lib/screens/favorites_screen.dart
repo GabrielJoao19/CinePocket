@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
+import '../providers/favorites_provider.dart';
 import '../models/movie.dart';
 import '../navigation/route_names.dart';
 import '../theme.dart';
@@ -9,6 +11,7 @@ class FavoritesScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final favorites = context.watch<FavoritesProvider>();
     return Scaffold(
       appBar: const CineAppBar(),
       body: ListView(
@@ -26,11 +29,12 @@ class FavoritesScreen extends StatelessWidget {
           const Text('Coleção de clássicos e destaques salvos',
               style: TextStyle(fontSize: 12, color: AppColors.textSecondary)),
           const SizedBox(height: 10),
-          Row(
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
             children: [
               Container(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                 decoration: BoxDecoration(
                   color: AppColors.surface,
                   borderRadius: BorderRadius.circular(12),
@@ -42,14 +46,14 @@ class FavoritesScreen extends StatelessWidget {
                     Icon(Icons.check_circle,
                         size: 13, color: Colors.lightBlueAccent),
                     SizedBox(width: 4),
-                    Text('Salvos no dispositivo',
+                    Text('Favoritos da sessão',
                         style: TextStyle(
                             fontSize: 11, color: AppColors.textSecondary)),
                   ],
                 ),
               ),
               const SizedBox(width: 8),
-              Text('${favoriteMovies.length} filmes salvos',
+              Text('${favorites.count} filmes salvos',
                   style: const TextStyle(
                       fontSize: 11,
                       color: AppColors.yellow,
@@ -59,7 +63,11 @@ class FavoritesScreen extends StatelessWidget {
           const SizedBox(height: 14),
           _filters(),
           const SizedBox(height: 14),
-          for (final m in favoriteMovies) ...[
+          if (favorites.count == 0)
+            const Padding(
+                padding: EdgeInsets.all(24),
+                child: Text('Nenhum favorito nesta sessão.')),
+          for (final m in favorites.movies) ...[
             _favoriteCard(context, m),
             const SizedBox(height: 10),
           ],
@@ -125,62 +133,72 @@ class FavoritesScreen extends StatelessWidget {
           padding: const EdgeInsets.all(10),
           child: Column(
             children: [
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              PosterPlaceholder(colors: m.colors, width: 64, height: 92),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  PosterPlaceholder(colors: m.colors, width: 64, height: 92),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Expanded(
-                          child: Text(m.title,
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: const TextStyle(
-                                  fontSize: 14, fontWeight: FontWeight.w700)),
+                        Row(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Expanded(
+                              child: Text(m.title,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: const TextStyle(
+                                      fontSize: 14,
+                                      fontWeight: FontWeight.w700)),
+                            ),
+                            const SizedBox(width: 6),
+                            RatingBadge(m.rating),
+                          ],
                         ),
-                        const SizedBox(width: 6),
-                        RatingBadge(m.rating),
+                        const SizedBox(height: 4),
+                        Text('${m.year}',
+                            style: const TextStyle(
+                                fontSize: 12, color: AppColors.textSecondary)),
+                        const SizedBox(height: 8),
+                        Wrap(
+                          spacing: 6,
+                          runSpacing: 4,
+                          children: [for (final g in m.genres) GenreTag(g)],
+                        ),
                       ],
                     ),
-                    const SizedBox(height: 4),
-                    Text('${m.year}',
+                  ),
+                ],
+              ),
+              const SizedBox(height: 8),
+              const Divider(height: 1, color: AppColors.border),
+              const SizedBox(height: 8),
+              Row(
+                children: [
+                  const Icon(Icons.calendar_today_outlined,
+                      size: 12, color: AppColors.textSecondary),
+                  const SizedBox(width: 6),
+                  Expanded(
+                    child: Text(
+                        m.savedAt.isEmpty
+                            ? 'Adicionado nesta sessão'
+                            : m.savedAt,
                         style: const TextStyle(
-                            fontSize: 12, color: AppColors.textSecondary)),
-                    const SizedBox(height: 8),
-                    Wrap(
-                      spacing: 6,
-                      runSpacing: 4,
-                      children: [for (final g in m.genres) GenreTag(g)],
-                    ),
-                  ],
-                ),
+                            fontSize: 11, color: AppColors.textSecondary)),
+                  ),
+                  IconButton(
+                      tooltip: 'Remover dos favoritos',
+                      onPressed: () => context
+                          .read<FavoritesProvider>()
+                          .setFavorite(m, false),
+                      icon: const Icon(Icons.favorite,
+                          size: 18, color: AppColors.heart)),
+                ],
               ),
             ],
           ),
-          const SizedBox(height: 8),
-          const Divider(height: 1, color: AppColors.border),
-          const SizedBox(height: 8),
-          Row(
-            children: [
-              const Icon(Icons.calendar_today_outlined,
-                  size: 12, color: AppColors.textSecondary),
-              const SizedBox(width: 6),
-              Expanded(
-                child: Text(m.savedAt,
-                    style: const TextStyle(
-                        fontSize: 11, color: AppColors.textSecondary)),
-              ),
-              const Icon(Icons.favorite, size: 18, color: AppColors.heart),
-            ],
-          ),
-        ],
-      ),
         ),
       ),
     );
@@ -205,7 +223,7 @@ class FavoritesScreen extends StatelessWidget {
                 Text('Espaço Ocupado',
                     style:
                         TextStyle(fontSize: 12, fontWeight: FontWeight.w700)),
-                Text('4.8 MB de metadados em cache local',
+                Text('Favoritos em memória; sem persistência local',
                     style: TextStyle(
                         fontSize: 11, color: AppColors.textSecondary)),
               ],
