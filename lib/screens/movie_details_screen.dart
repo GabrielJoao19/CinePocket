@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
+import '../providers/favorites_provider.dart';
 import 'package:flutter/services.dart';
 import '../models/movie.dart';
 import '../theme.dart';
@@ -30,7 +32,7 @@ class _MovieDetailsScreenState extends State<MovieDetailsScreen> {
 
   final _controller = TextEditingController();
   int _rating = 0;
-  bool _favorite = false;
+  bool get _favorite => context.read<FavoritesProvider>().isFavorite(movie);
 
   /// Trava de concorrência: enquanto true, TODOS os eventos de entrada
   /// (texto, botões e gestos da avaliação) são ignorados. Evita duplo envio
@@ -65,11 +67,11 @@ class _MovieDetailsScreenState extends State<MovieDetailsScreen> {
 
   // ------------------------------------------------------------
   // FAVORITO: acionado pelo duplo toque no banner OU pelo botão.
-  // Dois eventos diferentes, um único estado (_favorite).
+  // Dois eventos diferentes, um único estado no FavoritesProvider.
   // ------------------------------------------------------------
   void _toggleFavorite() {
     HapticFeedback.lightImpact();
-    setState(() => _favorite = !_favorite);
+    context.read<FavoritesProvider>().toggleFavorite(movie);
     _showMessage(_favorite
         ? '"${movie.title}" adicionado aos favoritos ♥'
         : 'Removido dos favoritos');
@@ -154,9 +156,11 @@ class _MovieDetailsScreenState extends State<MovieDetailsScreen> {
     setState(() {
       _submitting = false;
       _rating = 0;
-      if (autoFavorite) _favorite = true;
     });
 
+    if (autoFavorite) {
+      context.read<FavoritesProvider>().setFavorite(movie, true);
+    }
     HapticFeedback.heavyImpact();
     _showMessage(autoFavorite
         ? 'Avaliação enviada! Nota alta: filme adicionado aos favoritos ♥'
@@ -212,8 +216,8 @@ class _MovieDetailsScreenState extends State<MovieDetailsScreen> {
     _controller.clear();
     setState(() {
       _rating = 0;
-      _favorite = false;
     });
+    context.read<FavoritesProvider>().setFavorite(movie, false);
     _showMessage('Tudo foi limpo');
   }
 
@@ -232,6 +236,7 @@ class _MovieDetailsScreenState extends State<MovieDetailsScreen> {
   // ============================================================
   @override
   Widget build(BuildContext context) {
+    context.watch<FavoritesProvider>();
     final original =
         movie.originalTitle.isNotEmpty ? movie.originalTitle : movie.title;
     return Scaffold(
@@ -260,7 +265,8 @@ class _MovieDetailsScreenState extends State<MovieDetailsScreen> {
                   runSpacing: 8,
                   children: [
                     _infoPill('${movie.year}'),
-                    _infoPill(movie.ageRating.isEmpty ? '14+' : movie.ageRating),
+                    _infoPill(
+                        movie.ageRating.isEmpty ? '14+' : movie.ageRating),
                     _infoPill(
                         movie.duration.isEmpty ? '2h 46m' : movie.duration),
                     _infoPill('IMAX 4K', highlight: true),
@@ -337,66 +343,66 @@ class _MovieDetailsScreenState extends State<MovieDetailsScreen> {
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  _circleButton(Icons.arrow_back,
-                      onTap: () {
-                        debugPrint(
-                          'POP: saindo dos detalhes de "${movie.title}" com resultado: $_favorite',
-                        );
+                  _circleButton(
+                    Icons.arrow_back,
+                    onTap: () {
+                      debugPrint(
+                        'POP: saindo dos detalhes de "${movie.title}" com resultado: $_favorite',
+                      );
 
-                        Navigator.pop(context, _favorite);
-                      },
+                      Navigator.pop(context, _favorite);
+                    },
                   ),
                 ],
               ),
             ),
           ),
-            // Indicador animado do estado de favorito.
-            Positioned(
-              left: 16,
-              bottom: 10,
-              child: CircleAvatar(
-                radius: 18,
-                backgroundColor: Colors.black54,
-                child: AnimatedSwitcher(
-                  duration: const Duration(milliseconds: 250),
-                  transitionBuilder: (child, anim) =>
-                      ScaleTransition(scale: anim, child: child),
-                  child: Icon(
-                    _favorite ? Icons.favorite : Icons.favorite_border,
-                    key: ValueKey(_favorite),
-                    color: _favorite ? AppColors.heart : Colors.white70,
-                    size: 20,
-                  ),
+          // Indicador animado do estado de favorito.
+          Positioned(
+            left: 16,
+            bottom: 10,
+            child: CircleAvatar(
+              radius: 18,
+              backgroundColor: Colors.black54,
+              child: AnimatedSwitcher(
+                duration: const Duration(milliseconds: 250),
+                transitionBuilder: (child, anim) =>
+                    ScaleTransition(scale: anim, child: child),
+                child: Icon(
+                  _favorite ? Icons.favorite : Icons.favorite_border,
+                  key: ValueKey(_favorite),
+                  color: _favorite ? AppColors.heart : Colors.white70,
+                  size: 20,
                 ),
               ),
             ),
-            Positioned(
-              right: 16,
-              bottom: 10,
-              child: Container(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                decoration: BoxDecoration(
-                  color: Colors.black54,
-                  borderRadius: BorderRadius.circular(16),
-                  border: Border.all(color: AppColors.border),
-                ),
-                child: const Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Icon(Icons.play_circle_fill,
-                        color: AppColors.yellow, size: 16),
-                    SizedBox(width: 4),
-                    Text('Ver Trailer',
-                        style: TextStyle(
-                            fontSize: 12, fontWeight: FontWeight.w600)),
-                  ],
-                ),
+          ),
+          Positioned(
+            right: 16,
+            bottom: 10,
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+              decoration: BoxDecoration(
+                color: Colors.black54,
+                borderRadius: BorderRadius.circular(16),
+                border: Border.all(color: AppColors.border),
+              ),
+              child: const Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(Icons.play_circle_fill,
+                      color: AppColors.yellow, size: 16),
+                  SizedBox(width: 4),
+                  Text('Ver Trailer',
+                      style:
+                          TextStyle(fontSize: 12, fontWeight: FontWeight.w600)),
+                ],
               ),
             ),
-          ],
-        ),
-      );
+          ),
+        ],
+      ),
+    );
   }
 
   Widget _circleButton(IconData icon, {VoidCallback? onTap}) {
@@ -417,8 +423,8 @@ class _MovieDetailsScreenState extends State<MovieDetailsScreen> {
       decoration: BoxDecoration(
         color: AppColors.surfaceLight,
         borderRadius: BorderRadius.circular(6),
-        border: Border.all(
-            color: highlight ? AppColors.yellow : AppColors.border),
+        border:
+            Border.all(color: highlight ? AppColors.yellow : AppColors.border),
       ),
       child: Text(text,
           style: TextStyle(
@@ -510,9 +516,11 @@ class _MovieDetailsScreenState extends State<MovieDetailsScreen> {
         children: [
           Icon(icon, size: 16, color: Colors.white70),
           const SizedBox(width: 6),
-          Text(label,
-              style:
-                  const TextStyle(fontSize: 12, fontWeight: FontWeight.w600)),
+          Flexible(
+              child: Text(label,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                      fontSize: 12, fontWeight: FontWeight.w600))),
         ],
       ),
     );

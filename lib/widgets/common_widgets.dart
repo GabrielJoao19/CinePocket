@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 import '../navigation/route_names.dart';
+import '../providers/favorites_provider.dart';
 import '../theme.dart';
 
 /// Placeholder de pôster (gradiente + ícone). Futuramente: Image.network(TMDB).
@@ -157,6 +159,13 @@ class CineAppBar extends StatelessWidget implements PreferredSizeWidget {
         ],
       ),
       actions: [
+        Consumer<FavoritesProvider>(
+          builder: (context, favorites, _) => Badge(
+            isLabelVisible: favorites.count > 0,
+            label: Text('${favorites.count}'),
+            child: const Icon(Icons.favorite_border, color: AppColors.heart),
+          ),
+        ),
         IconButton(
           icon: const Icon(Icons.account_circle_outlined,
               color: AppColors.textSecondary),
