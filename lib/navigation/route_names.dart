@@ -5,6 +5,7 @@ import '../models/movie.dart';
 class RouteNames {
   // --- Rotas RAIZ (Navigator do MaterialApp) ---
   static const login = '/login';
+  static const consultation = '/consultation';
   static const home = '/home'; // contém Drawer + BottomNavigationBar
   static const settings = '/settings';
 

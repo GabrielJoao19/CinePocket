@@ -6,11 +6,14 @@ import 'navigation/tab_routes.dart';
 import 'models/movie.dart';
 import 'providers/favorites_provider.dart';
 import 'screens/login_screen.dart';
+import 'screens/consultation_screen.dart';
+import 'services/api_service.dart';
 import 'screens/movie_details_screen.dart';
 import 'screens/settings_screen.dart';
 import 'theme.dart';
 
 void main() {
+  WidgetsFlutterBinding.ensureInitialized();
   runApp(
     ChangeNotifierProvider(
       create: (_) => FavoritesProvider(),
@@ -21,33 +24,41 @@ void main() {
 
 /// Aplicativo principal com mapeamento centralizado de rotas nomeadas.
 class CinePocketApp extends StatelessWidget {
-  const CinePocketApp({super.key});
+  final ApiService? api;
+  const CinePocketApp({super.key, this.api});
 
   @override
   Widget build(BuildContext context) {
-    return MaterialApp(
-      title: 'CinePocket',
-      debugShowCheckedModeBanner: false,
-      theme: buildAppTheme(),
-      // Rota inicial da aplicação
-      initialRoute: RouteNames.home,
-      // 1. Mapeamento centralizado de rotas no MaterialApp
-      routes: {
-        RouteNames.login: (context) => const LoginScreen(),
-        RouteNames.home: (context) => const MainShell(),
-        RouteNames.settings: (context) {
-          // 4. Recebimento de argumentos em rota nomeada
-          final args = ModalRoute.of(context)?.settings.arguments;
-          final currentName = args is String ? args : 'João Gabriel';
-          return SettingsScreen(currentName: currentName);
-        },
-        RouteNames.details: (context) {
-          final args = ModalRoute.of(context)?.settings.arguments;
-          final movie = args is Movie ? args : featuredMovies.first;
-          return MovieDetailsScreen(movie: movie);
-        },
-      },
-    );
+    return Provider<ApiService>(
+        create: (_) => api ?? ApiService(),
+        dispose: (_, service) => service.close(),
+        child: MaterialApp(
+          title: 'CinePocket',
+          debugShowCheckedModeBanner: false,
+          theme: buildAppTheme(),
+          // Rota inicial da aplicação
+          initialRoute: RouteNames.login,
+          onGenerateInitialRoutes: (_) =>
+              [MaterialPageRoute(builder: (_) => const LoginScreen())],
+          // 1. Mapeamento centralizado de rotas no MaterialApp
+          routes: {
+            RouteNames.login: (context) => LoginScreen(
+                message: ModalRoute.of(context)?.settings.arguments as String?),
+            RouteNames.consultation: (_) => const ConsultationScreen(),
+            RouteNames.home: (context) => const MainShell(),
+            RouteNames.settings: (context) {
+              // 4. Recebimento de argumentos em rota nomeada
+              final args = ModalRoute.of(context)?.settings.arguments;
+              final currentName = args is String ? args : 'João Gabriel';
+              return SettingsScreen(currentName: currentName);
+            },
+            RouteNames.details: (context) {
+              final args = ModalRoute.of(context)?.settings.arguments;
+              final movie = args is Movie ? args : featuredMovies.first;
+              return MovieDetailsScreen(movie: movie);
+            },
+          },
+        ));
   }
 }
 
@@ -116,6 +127,14 @@ class _MainShellState extends State<MainShell> {
             ),
           ),
           ListTile(
+            leading: const Icon(Icons.cloud_outlined, color: AppColors.yellow),
+            title: const Text('Consultar filmes da API'),
+            onTap: () {
+              Navigator.of(context).pushNamedAndRemoveUntil(
+                  RouteNames.consultation, (_) => false);
+            },
+          ),
+          ListTile(
             leading: const Icon(Icons.settings, color: AppColors.yellow),
             title: const Text('Configurações'),
             subtitle: const Text('Editar perfil e preferências',
@@ -176,14 +195,22 @@ class _MainShellState extends State<MainShell> {
           const Divider(color: AppColors.border),
           ListTile(
             leading: const Icon(Icons.logout, color: Colors.redAccent),
-            title: const Text('Logout',
-                style: TextStyle(color: Colors.redAccent)),
+            title:
+                const Text('Logout', style: TextStyle(color: Colors.redAccent)),
             subtitle: const Text('Sair para tela de autenticação',
                 style: TextStyle(fontSize: 11, color: AppColors.textSecondary)),
-            onTap: () {
-              Navigator.pop(context); // fecha o drawer
-              // 2. Logout usando pushReplacement para tela de login
-              Navigator.of(context).pushReplacementNamed(RouteNames.login);
+            onTap: () async {
+              Navigator.pop(context);
+              String? message;
+              try {
+                await context.read<ApiService>().logout();
+              } on ApiFailure catch (error) {
+                message = error.message;
+              }
+              if (!mounted) return;
+              Navigator.of(context).pushNamedAndRemoveUntil(
+                  RouteNames.login, (_) => false,
+                  arguments: message);
             },
           ),
         ],

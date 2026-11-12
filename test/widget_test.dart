@@ -3,12 +3,16 @@ import 'package:provider/provider.dart';
 import 'package:cinepocket/providers/favorites_provider.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:cinepocket/main.dart';
+import 'package:cinepocket/theme.dart';
+
+Widget catalogApp() =>
+    MaterialApp(theme: buildAppTheme(), home: const MainShell());
 
 void main() {
   testWidgets('Test clicking on movie details and returning',
       (WidgetTester tester) async {
     await tester.pumpWidget(ChangeNotifierProvider(
-        create: (_) => FavoritesProvider(), child: const CinePocketApp()));
+        create: (_) => FavoritesProvider(), child: catalogApp()));
     await tester.pumpAndSettle();
 
     // 1. Verifica se a Home foi carregada com os filmes
@@ -33,7 +37,7 @@ void main() {
   testWidgets('Test navigation between tabs and drawer',
       (WidgetTester tester) async {
     await tester.pumpWidget(ChangeNotifierProvider(
-        create: (_) => FavoritesProvider(), child: const CinePocketApp()));
+        create: (_) => FavoritesProvider(), child: catalogApp()));
     await tester.pumpAndSettle();
 
     // 1. Troca para a aba Buscar (clicando no item da BottomNavigationBar)
@@ -62,8 +66,8 @@ void main() {
     await tester.binding.setSurfaceSize(const Size(430, 932));
     addTearDown(() => tester.binding.setSurfaceSize(null));
     final favorites = FavoritesProvider();
-    await tester.pumpWidget(ChangeNotifierProvider.value(
-        value: favorites, child: const CinePocketApp()));
+    await tester.pumpWidget(
+        ChangeNotifierProvider.value(value: favorites, child: catalogApp()));
     await tester.pumpAndSettle();
     final initialCount = favorites.count;
     await tester.tap(find.text('Duna: Parte 2').first);
