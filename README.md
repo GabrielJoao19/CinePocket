@@ -54,3 +54,17 @@ compartilhar opiniões e decidir o que assistir em seguida.
 Confira o protótipo e o design das telas no Figma:
 
 [Acessar o projeto no Figma](https://www.figma.com/design/76YfCCueANLcsmkFRGOohV/Mobile?node-id=0-1&p=f&t=inGqQ2fY1eoa01DK-0)
+
+## Autenticação JWT e consulta segura
+
+O app inicia no login e, após autenticação, consulta filmes de uma API HTTPS,
+com token em `flutter_secure_storage`. Configure o backend compatível:
+
+```sh
+flutter pub get
+flutter run --dart-define=API_BASE_URL=https://api.seu-dominio.com
+```
+
+A API não está incluída neste repositório. Consulte o
+[contrato, configuração, análise de segurança e roteiro de testes](docs/justificativas/comunicacao-segura.md).
+O catálogo visual original permanece identificado como demonstração.
