@@ -35,10 +35,11 @@ flutter build web
 Os testes do servidor estão em `backend/tests`; os testes Flutter cobrem Bearer,
 cofre, falhas de comunicação, JSON, navegação, busca e troca de contas.
 
+- [Apresentação com código comentado e evidências](docs/entrega/apresentacao-comunicacao-segura.md)
 - [Justificativa técnica e comparação de armazenamento](docs/justificativas/comunicacao-segura.md)
 - [Contrato da API e teste com duas contas](backend/README.md)
 
-Relatório e evidências da entrega devem acompanhar o código em `docs/entrega/`.
+A documentação de apresentação e evidências fica em `docs/entrega/`.
 Capturas Web demonstram o fluxo, mas não substituem teste do cofre em Android/iOS.
 
 A interface ativa é a consulta autenticada de filmes, cadastro, detalhes e favoritos.

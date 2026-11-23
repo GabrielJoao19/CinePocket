@@ -405,7 +405,7 @@ O projeto aplica padrões leves e idiomáticos de Dart/Flutter e FastAPI sem int
 
 ## Validação realizada e limitações
 
-- **Validado:** `flutter analyze` (0 avisos), `flutter test` (**35 testes aprovados**), `pytest backend/tests` (**8 testes aprovados**), fluxo Web com API HTTPS local documentado em [docs/entrega/README.md](../../docs/entrega/README.md) e relatório em [docs/entrega/relatorio-seguranca.pdf](../../docs/entrega/relatorio-seguranca.pdf).
+- **Validado:** `flutter analyze` (0 avisos), `flutter test` (**35 testes aprovados**), `pytest backend/tests` (**8 testes aprovados**), fluxo Web com API HTTPS local documentado em [docs/entrega/README.md](../../docs/entrega/README.md) e apresentação em [docs/entrega/apresentacao-comunicacao-segura.md](../../docs/entrega/apresentacao-comunicacao-segura.md).
 - **Limitações registradas:**
   - Os testes automatizados do Flutter utilizam `MockClient` e `MemoryTokens`; o funcionamento do cofre nativo (`Keystore` no Android e `Keychain` no iOS) ainda precisa ser validado em aparelho ou emulador real.
   - A API é didática para desenvolvimento local em HTTPS (`127.0.0.1:8443` com certificado autoassinado) e não inclui refresh token, revogação de JWT no servidor ou recuperação de senha.
