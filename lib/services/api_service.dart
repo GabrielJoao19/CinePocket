@@ -1,5 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
+import 'package:flutter/foundation.dart';
+import '../models/movie.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:http/http.dart' as http;
 
@@ -32,26 +34,28 @@ class SecureTokenStore implements TokenStore {
   Future<void> delete() => storage.delete(key: _key);
 }
 
-class ProtectedMovie {
-  final String title;
-  final int year;
-  final double rating;
-  const ProtectedMovie(this.title, this.year, this.rating);
-
-  factory ProtectedMovie.fromJson(dynamic json) {
+class SessionUser {
+  final String id;
+  final String name;
+  final String email;
+  const SessionUser(this.id, this.name, this.email);
+  factory SessionUser.fromJson(dynamic json) {
     if (json is! Map<String, dynamic> ||
-        json['title'] is! String ||
-        (json['title'] as String).trim().isEmpty ||
-        json['year'] is! int ||
-        json['rating'] is! num) {
-      throw const FormatException('Invalid movie');
+        [
+          'id',
+          'name',
+          'email'
+        ].any((key) => json[key] is! String || (json[key] as String).isEmpty)) {
+      throw const FormatException();
     }
-    return ProtectedMovie(
-        json['title'], json['year'], (json['rating'] as num).toDouble());
+    return SessionUser(json['id'], json['name'], json['email']);
   }
 }
 
-class ApiService {
+class ApiService extends ChangeNotifier {
+  SessionUser? currentUser;
+  int sessionVersion = 0;
+  void Function(String message)? onSessionExpired;
   final http.Client client;
   final TokenStore tokens;
   final String baseUrl;
@@ -64,7 +68,8 @@ class ApiService {
   ApiService({
     http.Client? client,
     TokenStore? tokens,
-    this.baseUrl = const String.fromEnvironment('API_BASE_URL'),
+    this.baseUrl = const String.fromEnvironment('API_BASE_URL',
+        defaultValue: 'https://localhost:8443'),
     this.loginPath = const String.fromEnvironment('API_LOGIN_PATH',
         defaultValue: '/auth/login'),
     this.moviesPath = const String.fromEnvironment('API_MOVIES_PATH',
@@ -72,6 +77,17 @@ class ApiService {
     this.timeout = const Duration(seconds: 15),
   })  : client = client ?? http.Client(),
         tokens = tokens ?? SecureTokenStore();
+
+  Future<bool> hasSession() async {
+    if (_blocked) return false;
+    try {
+      final token = await tokens.read();
+      return token != null && token.isNotEmpty;
+    } on Exception {
+      throw const ApiFailure(
+          'Não foi possível ler o armazenamento seguro. Tente novamente.');
+    }
+  }
 
   Uri _endpoint(String path) {
     final base = Uri.tryParse(baseUrl);
@@ -94,7 +110,7 @@ class ApiService {
   }
 
   Future<http.Response> _request(String method, String path,
-      {String? token, Map<String, String>? body}) async {
+      {String? token, Map<String, dynamic>? body}) async {
     final request = http.Request(method, _endpoint(path))
       ..followRedirects = false
       ..headers['Accept'] = 'application/json';
@@ -154,6 +170,9 @@ class ApiService {
     try {
       await tokens.write(token);
       _blocked = false;
+      currentUser = null;
+      sessionVersion++;
+      notifyListeners();
     } on Exception {
       _blocked = true;
       throw const ApiFailure(
@@ -163,6 +182,9 @@ class ApiService {
 
   Future<void> logout() async {
     _blocked = true;
+    currentUser = null;
+    sessionVersion++;
+    notifyListeners();
     try {
       await tokens.delete();
     } on Exception {
@@ -171,7 +193,9 @@ class ApiService {
     }
   }
 
-  Future<List<ProtectedMovie>> fetchMovies() async {
+  Future<http.Response> _authorizedRequest(String method, String path,
+      {Map<String, dynamic>? body}) async {
+    final version = sessionVersion;
     if (_blocked) throw const SessionExpired();
     String? token;
     try {
@@ -180,25 +204,81 @@ class ApiService {
       throw const ApiFailure(
           'Não foi possível ler o armazenamento seguro. Tente novamente.');
     }
-    if (token == null || token.isEmpty) throw const SessionExpired();
-    final response = await _request('GET', moviesPath, token: token);
+    if (token == null || token.isEmpty) {
+      onSessionExpired?.call('Sessão ausente. Entre novamente.');
+      throw const SessionExpired('Sessão ausente. Entre novamente.');
+    }
+    if (version != sessionVersion) throw const SessionExpired();
+    final response = await _request(method, path, token: token, body: body);
+    if (version != sessionVersion) throw const SessionExpired();
     if (response.statusCode == 401) {
+      String message = 'Sessão expirada. Entre novamente.';
       try {
         await logout();
       } on ApiFailure {
-        throw const SessionExpired(
-            'Sessão expirada. Falha ao remover o token do armazenamento seguro. Entre novamente ou tente limpar a sessão.');
+        message =
+            'Sessão expirada. Falha ao remover o token do armazenamento seguro. Entre novamente ou tente limpar a sessão.';
       }
-      throw const SessionExpired();
+      onSessionExpired?.call(message);
+      throw SessionExpired(message);
     }
     _checkStatus(response);
+    return response;
+  }
+
+  Future<void> register(String name, String email, String password) async {
+    final response = await _request('POST', '/auth/register',
+        body: {'name': name, 'email': email, 'password': password});
+    if (response.statusCode == 409) {
+      throw const ApiFailure('E-mail já cadastrado.');
+    }
+    if (response.statusCode == 422) {
+      throw const ApiFailure(
+          'Confira o nome, e-mail e a senha (mínimo de 8 caracteres).');
+    }
+    _checkStatus(response);
+    try {
+      SessionUser.fromJson(_json(response));
+    } on FormatException {
+      throw const ApiFailure('A API retornou dados de cadastro inválidos.');
+    }
+  }
+
+  Future<SessionUser> fetchMe() async {
+    final response = await _authorizedRequest('GET', '/me');
+    try {
+      final user = SessionUser.fromJson(_json(response));
+      currentUser = user;
+      return user;
+    } on FormatException {
+      throw const ApiFailure('A API retornou dados de usuário inválidos.');
+    }
+  }
+
+  Future<List<Movie>> _movieList(String path) async {
+    final response = await _authorizedRequest('GET', path);
     final json = _json(response);
     try {
-      if (json is! List) throw const FormatException('Expected list');
-      return json.map(ProtectedMovie.fromJson).toList();
+      if (json is! List) throw const FormatException();
+      return json.map(Movie.fromJson).toList();
     } on FormatException {
       throw const ApiFailure('A API retornou dados de filmes inválidos.');
     }
+  }
+
+  Future<List<Movie>> fetchMovies({String query = ''}) =>
+      _movieList(query.isEmpty
+          ? moviesPath
+          : '$moviesPath?q=${Uri.encodeQueryComponent(query)}');
+  Future<List<Movie>> fetchFavorites() => _movieList('/favorites');
+
+  Future<void> setFavorite(Movie movie, bool value) async {
+    if (movie.id.isEmpty) {
+      throw const ApiFailure('Filme sem identificação no catálogo.');
+    }
+    await _authorizedRequest(value ? 'POST' : 'DELETE',
+        value ? '/favorites' : '/favorites/${Uri.encodeComponent(movie.id)}',
+        body: value ? {'movie_id': movie.id} : null);
   }
 
   void close() => client.close();

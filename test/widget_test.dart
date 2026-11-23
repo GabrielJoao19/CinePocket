@@ -1,95 +1,77 @@
-import 'package:flutter/material.dart';
-import 'package:provider/provider.dart';
-import 'package:cinepocket/providers/favorites_provider.dart';
-import 'package:flutter_test/flutter_test.dart';
+import 'dart:convert';
 import 'package:cinepocket/main.dart';
-import 'package:cinepocket/theme.dart';
-
-Widget catalogApp() =>
-    MaterialApp(theme: buildAppTheme(), home: const MainShell());
+import 'package:cinepocket/services/api_service.dart';
+import 'package:flutter/material.dart';
+import 'package:flutter_test/flutter_test.dart';
+import 'package:http/http.dart' as http;
+import 'package:http/testing.dart';
+import 'api_service_test.dart' show MemoryTokens, testToken;
 
 void main() {
-  testWidgets('Test clicking on movie details and returning',
-      (WidgetTester tester) async {
-    await tester.pumpWidget(ChangeNotifierProvider(
-        create: (_) => FavoritesProvider(), child: catalogApp()));
-    await tester.pumpAndSettle();
-
-    // 1. Verifica se a Home foi carregada com os filmes
-    expect(find.text('Duna: Parte 2'), findsWidgets);
-
-    // 2. Clica no filme Duna: Parte 2
-    await tester.tap(find.text('Duna: Parte 2').first);
-    await tester.pumpAndSettle();
-
-    // 3. Verifica se a tela de detalhes abriu com sucesso
-    expect(find.text('Sinopse'), findsOneWidget);
-    expect(find.text('Elenco Principal'), findsOneWidget);
-
-    // 4. Clica no botão de voltar da tela de detalhes
-    await tester.tap(find.byIcon(Icons.arrow_back));
-    await tester.pumpAndSettle();
-
-    // 5. Verifica se voltou para a Home perfeitamente
-    expect(find.text('Filmes em Destaque'), findsOneWidget);
-  });
-
-  testWidgets('Test navigation between tabs and drawer',
-      (WidgetTester tester) async {
-    await tester.pumpWidget(ChangeNotifierProvider(
-        create: (_) => FavoritesProvider(), child: catalogApp()));
-    await tester.pumpAndSettle();
-
-    // 1. Troca para a aba Buscar (clicando no item da BottomNavigationBar)
-    await tester.tap(find.text('Buscar'));
-    await tester.pumpAndSettle();
-
-    expect(find.text('Buscar filmes...'), findsOneWidget);
-
-    // 2. Troca para a aba Favoritos
-    await tester.tap(find.text('Favoritos'));
-    await tester.pumpAndSettle();
-
-    expect(find.text('Meus Favoritos'), findsOneWidget);
-
-    // 3. Abre o Drawer pelo ícone de menu
-    await tester.tap(find.byIcon(Icons.menu));
-    await tester.pumpAndSettle();
-
-    // 4. Verifica itens do Drawer
-    expect(find.text('Configurações'), findsOneWidget);
-    expect(find.text('Sobre'), findsOneWidget);
-    expect(find.text('Logout'), findsOneWidget);
-  });
-  testWidgets('Favoritos compartilham alterações entre detalhes e lista',
+  testWidgets(
+      'switching accounts isolates favorites and restores saved collection on next login',
       (tester) async {
-    await tester.binding.setSurfaceSize(const Size(430, 932));
-    addTearDown(() => tester.binding.setSurfaceSize(null));
-    final favorites = FavoritesProvider();
-    await tester.pumpWidget(
-        ChangeNotifierProvider.value(value: favorites, child: catalogApp()));
+    final store = MemoryTokens();
+    var owner = '';
+    final collections = <String, bool>{'alice': false, 'bob': false};
+    const movie = {
+      'id': 'film-1',
+      'title': 'Castle in the Sky',
+      'year': 1986,
+      'rating': 9.5
+    };
+    final api = ApiService(
+        baseUrl: 'https://api.example.test',
+        tokens: store,
+        client: MockClient((request) async {
+          if (request.url.path == '/auth/login') {
+            owner =
+                (jsonDecode(request.body)['email'] as String).split('@').first;
+            return http.Response(jsonEncode({'access_token': testToken}), 200);
+          }
+          if (request.url.path == '/me') {
+            return http.Response(
+                jsonEncode({
+                  'id': owner,
+                  'name': owner,
+                  'email': '$owner@example.test'
+                }),
+                200);
+          }
+          if (request.url.path == '/favorites') {
+            if (request.method == 'POST') {
+              collections[owner] = true;
+              return http.Response('', 204);
+            }
+            return http.Response(
+                jsonEncode(collections[owner]! ? [movie] : []), 200);
+          }
+          return http.Response(jsonEncode([movie]), 200);
+        }));
+    await tester.pumpWidget(CinePocketApp(api: api));
+    Future<void> login(String name) async {
+      await tester.pumpAndSettle();
+      await tester.enterText(
+          find.byType(TextFormField).first, '$name@example.test');
+      await tester.enterText(find.byType(TextFormField).last, 'password');
+      await tester.tap(find.text('Entrar'));
+      await tester.pumpAndSettle();
+    }
+
+    await login('alice');
+    await tester.tap(find.byTooltip('Adicionar aos favoritos'));
     await tester.pumpAndSettle();
-    final initialCount = favorites.count;
-    await tester.tap(find.text('Duna: Parte 2').first);
+    expect(find.text('Meus favoritos (1)'), findsOneWidget);
+    await tester.tap(find.byTooltip('Sair'));
     await tester.pumpAndSettle();
-    await tester.ensureVisible(find.text('Adicionar aos Favoritos'));
+    await login('bob');
+    expect(find.text('Meus favoritos (0)'), findsOneWidget);
+    await tester.tap(find.text('Meus favoritos (0)'));
     await tester.pumpAndSettle();
-    await tester.tap(find.text('Adicionar aos Favoritos'));
+    expect(find.text('Nenhum favorito nesta conta.'), findsOneWidget);
+    await tester.tap(find.byTooltip('Sair'));
     await tester.pumpAndSettle();
-    expect(find.text('Nos Favoritos'), findsOneWidget);
-    expect(favorites.count, initialCount + 1);
-    Navigator.of(tester.element(find.text('Nos Favoritos'))).pop();
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('Favoritos'));
-    await tester.pumpAndSettle();
-    await tester.scrollUntilVisible(find.text('Duna: Parte 2'), 300,
-        scrollable: find.byType(Scrollable).first);
-    expect(find.text('Duna: Parte 2'), findsOneWidget);
-    await tester.ensureVisible(find.byTooltip('Remover dos favoritos').last);
-    await tester.pumpAndSettle();
-    await tester.tap(find.byTooltip('Remover dos favoritos').last);
-    await tester.pumpAndSettle();
-    expect(favorites.count, initialCount);
-    expect(find.text('Duna: Parte 2'), findsNothing);
+    await login('alice');
+    expect(find.text('Meus favoritos (1)'), findsOneWidget);
   });
 }

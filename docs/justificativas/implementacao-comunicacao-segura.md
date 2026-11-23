@@ -2,19 +2,19 @@
 
 ## Objetivo e abordagem
 
-A implementação da issue #3 adiciona autenticação JWT, armazenamento seguro do token e consulta de filmes em uma API REST protegida. O serviço `ApiService` concentra as requisições e as regras da sessão; as telas recebem os dados, apresentam o resultado e conduzem a navegação.
+A implementação da issue #3 adiciona autenticação JWT, armazenamento seguro do token, consulta protegida de filmes e favoritos persistidos por usuário. O aplicativo Flutter comunica-se exclusivamente por HTTPS com uma API própria em FastAPI + SQLite (`backend/`), que por sua vez consulta o catálogo público Studio Ghibli por HTTPS sem repassar o JWT da conta ao provedor externo.
 
-Antes, o login era demonstrativo e o catálogo usava dados simulados. Agora, o aplicativo inicia no login e abre a consulta da API após a autenticação. O catálogo anterior continua acessível como demonstração visual.
+O serviço `ApiService` concentra as requisições, a exigência de HTTPS e as regras de sessão; `FavoritesProvider` sincroniza os favoritos da conta autenticada e limpa o estado em memória a cada troca ou expiração de sessão; as telas (`LoginScreen`, `RegisterScreen`, `ConsultationScreen` e `MovieDetailsScreen`) conduzem o fluxo do usuário.
 
-**Limite da implementação:** a issue não informa uma API nem credenciais. O app depende de um servidor HTTPS compatível, configurado por `API_BASE_URL`. O [contrato da API e a análise de segurança](comunicacao-segura.md) descrevem os formatos e a configuração. Os testes usam respostas simuladas: não comprovam integração com um servidor real nem o funcionamento do armazenamento nativo em dispositivo.
+Para a análise completa de segurança (HTTPS, `SharedPreferences` vs. `flutter_secure_storage`, pacote `Encrypt` e tratamento de erros), consulte [comunicacao-segura.md](comunicacao-segura.md). Para executar a API HTTPS local e consultar o contrato dos endpoints, veja [backend/README.md](../../backend/README.md).
 
 ## Código comentado para conduzir a apresentação
 
-Os blocos reproduzem trechos dos arquivos do projeto; os comentários explicativos foram adicionados a esta documentação para facilitar a apresentação. Cada link aponta para o arquivo correspondente e as linhas indicadas. Alguns blocos são recortes de métodos maiores. Os testes referenciados são evidências automatizadas, sem capturas de tela ou alegação de execução em uma API real.
+Os blocos abaixo reproduzem trechos reais dos arquivos atuais do projeto com links diretos para as linhas correspondentes.
 
-### 1. Adicionar as dependências
+### 1. Dependências do cliente Flutter
 
-**O que faz:** `http` fornece o cliente para as requisições e `flutter_secure_storage` oferece armazenamento seguro para o token.
+**O que faz:** `provider` gerencia `ApiService` e `FavoritesProvider`, `http` realiza as requisições REST e `flutter_secure_storage` protege o JWT em repouso.
 
 [pubspec.yaml — linhas 9–14](../../pubspec.yaml#L9-L14)
 
@@ -23,83 +23,85 @@ dependencies:
   flutter:
     sdk: flutter
   provider: ^6.1.2
-  # Cliente para comunicação com a API.
   http: ^1.6.0
   flutter_secure_storage: ^10.0.0
 ```
 
-### 2. Iniciar no login e disponibilizar o serviço
+### 2. Iniciar no login e redirecionar globalmente em 401
 
-**O que faz:** `Provider<ApiService>` disponibiliza o serviço às telas. A rota inicial abre `LoginScreen`; a rota de consulta é registrada no aplicativo.
+**O que faz:** `CinePocketApp` inicializa `ApiService` e `FavoritesProvider`, registra o callback global `onSessionExpired` para limpar a pilha de navegação ao receber HTTP 401 em qualquer tela e inicia em `RouteNames.login`.
 
-[lib/main.dart — linhas 30–48](../../lib/main.dart#L30-L48)
+[lib/main.dart — linhas 24–75](../../lib/main.dart#L24-L75)
 
 ```dart
+class _CinePocketAppState extends State<CinePocketApp> {
+  final _navigator = GlobalKey<NavigatorState>();
+  late final ApiService _api = widget.api ?? ApiService();
+  late final FavoritesProvider _favorites = FavoritesProvider(_api);
+
   @override
-  Widget build(BuildContext context) {
-    // Compartilha o serviço de API entre as telas.
-    return Provider<ApiService>(
-        create: (_) => api ?? ApiService(),
-        dispose: (_, service) => service.close(),
+  void initState() {
+    super.initState();
+    _api.onSessionExpired = (message) {
+      _navigator.currentState?.pushNamedAndRemoveUntil(
+          RouteNames.login, (_) => false,
+          arguments: message);
+    };
+  }
+  // ...
+  @override
+  Widget build(BuildContext context) => MultiProvider(
+        providers: [
+          ChangeNotifierProvider<ApiService>.value(value: _api),
+          ChangeNotifierProvider<FavoritesProvider>.value(value: _favorites),
+        ],
         child: MaterialApp(
+          navigatorKey: _navigator,
           title: 'CinePocket',
           debugShowCheckedModeBanner: false,
           theme: buildAppTheme(),
-          // Rota inicial da aplicação
           initialRoute: RouteNames.login,
           onGenerateInitialRoutes: (_) =>
               [MaterialPageRoute(builder: (_) => const LoginScreen())],
-          // 1. Mapeamento centralizado de rotas no MaterialApp
           routes: {
             RouteNames.login: (context) => LoginScreen(
                 message: ModalRoute.of(context)?.settings.arguments as String?),
             RouteNames.consultation: (_) => const ConsultationScreen(),
-            RouteNames.home: (context) => const MainShell(),
+            RouteNames.home: (_) => const ConsultationScreen(),
+            RouteNames.details: (context) {
+              final movie = ModalRoute.of(context)!.settings.arguments;
+              return movie is Movie
+                  ? MovieDetailsScreen(movie: movie)
+                  : const ConsultationScreen();
+            },
+          },
+        ),
+      );
+}
 ```
 
-### 3. Receber e validar as credenciais
+### 3. Login, restauração de sessão e cadastro
 
-**O que faz:** O formulário coleta e-mail e senha, valida os campos e oculta a senha. Enquanto há uma operação em andamento, os campos ficam desabilitados.
+**O que faz:** `LoginScreen` verifica se já existe token no armazenamento seguro para restaurar a sessão; no login manual, valida e-mail e senha, oculta a senha, chama `ApiService.login`, limpa o campo de senha e navega para `RouteNames.consultation` removendo o login da pilha. Também dá acesso à tela `RegisterScreen` (`POST /auth/register`) e à ação de limpar sessão armazenada.
 
-[lib/screens/login_screen.dart — linhas 84–109](../../lib/screens/login_screen.dart#L84-L109)
-
-```dart
-                    // Recebe o e-mail e valida o formato antes do envio.
-                    TextFormField(
-                        controller: _email,
-                        enabled: !_busy,
-                        keyboardType: TextInputType.emailAddress,
-                        autofillHints: const [AutofillHints.username],
-                        decoration: const InputDecoration(
-                            labelText: 'E-mail', border: OutlineInputBorder()),
-                        validator: (value) => value == null ||
-                                !RegExp(r'^[^\s@]+@[^\s@]+\.[^\s@]+$')
-                                    .hasMatch(value.trim())
-                            ? 'Informe um e-mail válido.'
-                            : null),
-                    const SizedBox(height: 12),
-                    TextFormField(
-                        controller: _password,
-                        enabled: !_busy,
-                        obscureText: true,
-                        enableSuggestions: false,
-                        autocorrect: false,
-                        autofillHints: const [AutofillHints.password],
-                        onFieldSubmitted: (_) => _login(),
-                        decoration: const InputDecoration(
-                            labelText: 'Senha', border: OutlineInputBorder()),
-                        validator: (value) => value == null || value.isEmpty
-                            ? 'Informe a senha.'
-                            : null),
-```
-
-### 4. Autenticar e abrir a consulta
-
-**O que faz:** O formulário chama `login` no serviço. Após o sucesso, limpa o campo de senha e abre a consulta, removendo a tela anterior da pilha. Caso ocorra erro, apresenta a mensagem.
-
-[lib/screens/login_screen.dart — linhas 28–47](../../lib/screens/login_screen.dart#L28-L47)
+[lib/screens/login_screen.dart — linhas 31–72](../../lib/screens/login_screen.dart#L31-L72)
 
 ```dart
+  Future<void> _restoreSession() async {
+    try {
+      final saved = await context.read<ApiService>().hasSession();
+      if (!mounted) return;
+      if (saved) {
+        Navigator.of(context)
+            .pushNamedAndRemoveUntil(RouteNames.consultation, (_) => false);
+      }
+    } on ApiFailure catch (error) {
+      if (mounted) setState(() => _error = error.message);
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
   Future<void> _login() async {
     if (_busy || !_form.currentState!.validate()) return;
     setState(() {
@@ -107,7 +109,6 @@ dependencies:
       _error = null;
     });
     try {
-      // Envia as credenciais e aguarda a gravação segura do token.
       await context
           .read<ApiService>()
           .login(_email.text.trim(), _password.text);
@@ -123,27 +124,40 @@ dependencies:
   }
 ```
 
-### 5. Configurar a API e exigir HTTPS
+### 4. Armazenamento seguro do token
 
-**O que faz:** `API_BASE_URL`, `API_LOGIN_PATH` e `API_MOVIES_PATH` configuram o servidor e os endpoints. A validação rejeita URLs sem HTTPS, caminhos inválidos e URL com credenciais embutidas.
+**O que faz:** `SecureTokenStore` encapsula leitura, gravação e remoção do token via `FlutterSecureStorage`. A interface `TokenStore` permite injetar uma implementação em memória nos testes automatizados.
 
-[lib/services/api_service.dart — linhas 64–94](../../lib/services/api_service.dart#L64-L94)
+[lib/services/api_service.dart — linhas 19–35](../../lib/services/api_service.dart#L19-L35)
 
 ```dart
-  ApiService({
-    http.Client? client,
-    TokenStore? tokens,
-    this.baseUrl = const String.fromEnvironment('API_BASE_URL'),
-    this.loginPath = const String.fromEnvironment('API_LOGIN_PATH',
-        defaultValue: '/auth/login'),
-    this.moviesPath = const String.fromEnvironment('API_MOVIES_PATH',
-        defaultValue: '/movies'),
-    this.timeout = const Duration(seconds: 15),
-  })  : client = client ?? http.Client(),
-        tokens = tokens ?? SecureTokenStore();
+abstract class TokenStore {
+  Future<String?> read();
+  Future<void> write(String token);
+  Future<void> delete();
+}
 
+class SecureTokenStore implements TokenStore {
+  final FlutterSecureStorage storage;
+  SecureTokenStore({this.storage = const FlutterSecureStorage()});
+  static const _key = 'cinepocket_access_token';
+  @override
+  Future<String?> read() => storage.read(key: _key);
+  @override
+  Future<void> write(String token) => storage.write(key: _key, value: token);
+  @override
+  Future<void> delete() => storage.delete(key: _key);
+}
+```
+
+### 5. Exigência de HTTPS e tratamento de rede/timeout
+
+**O que faz:** `API_BASE_URL` tem padrão `https://localhost:8443` (configurável por `--dart-define`). `_endpoint` rejeita qualquer URL que não use `https`, contenha credenciais embutidas ou altere a origem. `_request` desativa redirecionamentos (`followRedirects = false`), impõe timeout de 15 segundos e converte falhas de rede/TLS em mensagens claras de servidor indisponível.
+
+[lib/services/api_service.dart — linhas 92–134](../../lib/services/api_service.dart#L92-L134)
+
+```dart
   Uri _endpoint(String path) {
-    // Rejeita configurações inválidas ou que não usem HTTPS.
     final base = Uri.tryParse(baseUrl);
     if (base == null ||
         base.scheme != 'https' ||
@@ -162,18 +176,9 @@ dependencies:
     }
     return uri;
   }
-```
 
-### 6. Enviar requisições e tratar falhas de conexão
-
-**O que faz:** A requisição aceita JSON, envia corpo JSON quando necessário e inclui o cabeçalho Bearer quando recebe um token. Redirecionamentos estão desativados; timeout e falhas de conexão recebem mensagens próprias.
-
-[lib/services/api_service.dart — linhas 96–118](../../lib/services/api_service.dart#L96-L118)
-
-```dart
   Future<http.Response> _request(String method, String path,
-      {String? token, Map<String, String>? body}) async {
-    // Monta a requisição e impede redirecionamentos automáticos.
+      {String? token, Map<String, dynamic>? body}) async {
     final request = http.Request(method, _endpoint(path))
       ..followRedirects = false
       ..headers['Accept'] = 'application/json';
@@ -197,15 +202,14 @@ dependencies:
   }
 ```
 
-### 7. Extrair e armazenar o JWT
+### 6. Autenticação, extração do JWT e requisições protegidas (401)
 
-**O que faz:** O login envia as credenciais via POST, identifica credenciais inválidas, interpreta o JSON e verifica o formato compacto do token antes de gravá-lo. A verificação de formato não valida a assinatura; essa validação é responsabilidade do servidor.
+**O que faz:** `login` envia JSON para `/auth/login`, identifica credenciais inválidas (`401`/`403`), valida a estrutura compacta do JWT em `access_token` e grava no `TokenStore` (se a gravação falhar, bloqueia a sessão e mantém o usuário no login). `_authorizedRequest` lê o token antes de cada chamada protegida (`/me`, `/movies`, `/favorites`), envia `Authorization: Bearer <token>` e, diante de `401`, executa `logout()`, notifica listeners (limpando favoritos em memória) e dispara `onSessionExpired`.
 
-[lib/services/api_service.dart — linhas 139–162](../../lib/services/api_service.dart#L139-L162)
+[lib/services/api_service.dart — linhas 155–227](../../lib/services/api_service.dart#L155-L227)
 
 ```dart
   Future<void> login(String email, String password) async {
-    // Envia e-mail e senha para o endpoint de autenticação.
     final response = await _request('POST', loginPath,
         body: {'email': email, 'password': password});
     if (response.statusCode == 401 || response.statusCode == 403) {
@@ -223,60 +227,19 @@ dependencies:
     try {
       await tokens.write(token);
       _blocked = false;
+      currentUser = null;
+      sessionVersion++;
+      notifyListeners();
     } on Exception {
       _blocked = true;
       throw const ApiFailure(
           'Não foi possível salvar a sessão no armazenamento seguro. Tente entrar novamente.');
     }
   }
-```
 
-### 8. Usar o armazenamento seguro
-
-**O que faz:** `SecureTokenStore` implementa leitura, gravação e remoção do token com `FlutterSecureStorage`. A interface `TokenStore` também permite substituir o armazenamento nos testes.
-
-[lib/services/api_service.dart — linhas 17–33](../../lib/services/api_service.dart#L17-L33)
-
-```dart
-abstract class TokenStore {
-  Future<String?> read();
-  Future<void> write(String token);
-  Future<void> delete();
-}
-
-// Implementa as operações do token com armazenamento seguro.
-class SecureTokenStore implements TokenStore {
-  final FlutterSecureStorage storage;
-  SecureTokenStore({this.storage = const FlutterSecureStorage()});
-  static const _key = 'cinepocket_access_token';
-  @override
-  Future<String?> read() => storage.read(key: _key);
-  @override
-  Future<void> write(String token) => storage.write(key: _key, value: token);
-  @override
-  Future<void> delete() => storage.delete(key: _key);
-}
-```
-
-### 9. Consultar a API e tratar token expirado
-
-**O que faz:** O serviço lê o token antes do GET. Ao receber 401, tenta apagá-lo e sinaliza sessão expirada. Se a exclusão falhar, a mensagem informa o problema e `logout()` bloqueia novas consultas com o token durante o processo atual.
-
-[lib/services/api_service.dart — linhas 164–193](../../lib/services/api_service.dart#L164-L193)
-
-```dart
-  // Bloqueia a sessão antes de tentar apagar o token.
-  Future<void> logout() async {
-    _blocked = true;
-    try {
-      await tokens.delete();
-    } on Exception {
-      throw const ApiFailure(
-          'Não foi possível remover a sessão do armazenamento seguro. Tente novamente.');
-    }
-  }
-
-  Future<List<ProtectedMovie>> fetchMovies() async {
+  Future<http.Response> _authorizedRequest(String method, String path,
+      {Map<String, dynamic>? body}) async {
+    final version = sessionVersion;
     if (_blocked) throw const SessionExpired();
     String? token;
     try {
@@ -285,158 +248,130 @@ class SecureTokenStore implements TokenStore {
       throw const ApiFailure(
           'Não foi possível ler o armazenamento seguro. Tente novamente.');
     }
-    if (token == null || token.isEmpty) throw const SessionExpired();
-    final response = await _request('GET', moviesPath, token: token);
+    if (token == null || token.isEmpty) {
+      onSessionExpired?.call('Sessão ausente. Entre novamente.');
+      throw const SessionExpired('Sessão ausente. Entre novamente.');
+    }
+    if (version != sessionVersion) throw const SessionExpired();
+    final response = await _request(method, path, token: token, body: body);
+    if (version != sessionVersion) throw const SessionExpired();
     if (response.statusCode == 401) {
+      String message = 'Sessão expirada. Entre novamente.';
       try {
         await logout();
       } on ApiFailure {
-        throw const SessionExpired(
-            'Sessão expirada. Falha ao remover o token do armazenamento seguro. Entre novamente ou tente limpar a sessão.');
+        message =
+            'Sessão expirada. Falha ao remover o token do armazenamento seguro. Entre novamente ou tente limpar a sessão.';
       }
-      throw const SessionExpired();
+      onSessionExpired?.call(message);
+      throw SessionExpired(message);
     }
+    _checkStatus(response);
+    return response;
+  }
 ```
 
-### 10. Interpretar os dados recebidos
+### 7. Desserialização JSON e exibição de quatro atributos por filme
 
-**O que faz:** `ProtectedMovie.fromJson` valida título, ano e nota. A consulta exige uma lista e converte cada objeto; uma estrutura incompatível gera uma mensagem de erro.
+**O que faz:** `Movie.fromJson` valida os campos obrigatórios (`id`, `title`, `year`, `rating`) e lê os campos adicionais (`director`, `description`, `original_title`, `duration`, `genres`). `ConsultationScreen` carrega identidade (`/me`), filmes (`/movies`) e favoritos (`/favorites`) e exibe **título, ano, nota e direção** em cada item da lista (acima do mínimo de três atributos exigido pela issue).
 
-[lib/services/api_service.dart — linhas 35–52](../../lib/services/api_service.dart#L35-L52)
+[lib/models/movie.dart — linhas 33–58](../../lib/models/movie.dart#L33-L58)
 
 ```dart
-class ProtectedMovie {
-  final String title;
-  final int year;
-  final double rating;
-  const ProtectedMovie(this.title, this.year, this.rating);
-
-  // Valida os três atributos antes de construir o filme.
-  factory ProtectedMovie.fromJson(dynamic json) {
+  factory Movie.fromJson(dynamic json) {
     if (json is! Map<String, dynamic> ||
+        json['id'] is! String ||
+        (json['id'] as String).isEmpty ||
         json['title'] is! String ||
         (json['title'] as String).trim().isEmpty ||
         json['year'] is! int ||
         json['rating'] is! num) {
-      throw const FormatException('Invalid movie');
+      throw const FormatException();
     }
-    return ProtectedMovie(
-        json['title'], json['year'], (json['rating'] as num).toDouble());
-  }
-}
-```
-
-### 11. Converter a lista JSON
-
-**O que faz:** Após verificar o status, o serviço interpreta a resposta como uma lista de filmes e informa quando a estrutura não corresponde ao contrato.
-
-[lib/services/api_service.dart — linhas 194–202](../../lib/services/api_service.dart#L194-L202)
-
-```dart
-    _checkStatus(response);
-    // Converte o JSON recebido em objetos de filme.
-    final json = _json(response);
-    try {
-      if (json is! List) throw const FormatException('Expected list');
-      return json.map(ProtectedMovie.fromJson).toList();
-    } on FormatException {
-      throw const ApiFailure('A API retornou dados de filmes inválidos.');
-    }
+    return Movie(
+        id: json['id'],
+        title: json['title'],
+        year: json['year'],
+        rating: (json['rating'] as num).toDouble(),
+        originalTitle:
+            json['original_title'] is String ? json['original_title'] : '',
+        director: json['director'] is String ? json['director'] : '',
+        description: json['description'] is String ? json['description'] : '',
+        duration: json['duration'] is String ? json['duration'] : '',
+        genres: json['genres'] is List &&
+                (json['genres'] as List).every((g) => g is String)
+            ? List<String>.from(json['genres'])
+            : const [],
+        colors: const [Color(0xFF1F2A44), Color(0xFF8FA6C9)]);
   }
 ```
 
-### 12. Atualizar a interface e retornar ao login
-
-**O que faz:** A tela consulta a API ao iniciar. Ela apresenta erros comuns na própria tela e, ao receber `SessionExpired`, navega para o login removendo a pilha anterior.
-
-[lib/screens/consultation_screen.dart — linhas 17–45](../../lib/screens/consultation_screen.dart#L17-L45)
+[lib/screens/consultation_screen.dart — linhas 145–173](../../lib/screens/consultation_screen.dart#L145-L173)
 
 ```dart
-  @override
-  void initState() {
-    super.initState();
-    // Carrega os filmes assim que a tela é criada.
-    _load();
-  }
-
-  void _login(String? message) {
-    Navigator.of(context, rootNavigator: true).pushNamedAndRemoveUntil(
-        RouteNames.login, (_) => false,
-        arguments: message);
-  }
-
-  Future<void> _load() async {
-    setState(() {
-      _busy = true;
-      _error = null;
-      _movies = [];
-    });
-    try {
-      final movies = await context.read<ApiService>().fetchMovies();
-      if (mounted) setState(() => _movies = movies);
-    } on SessionExpired catch (error) {
-      if (mounted) _login(error.message);
-    } on ApiFailure catch (error) {
-      if (mounted) setState(() => _error = error.message);
-    } finally {
-      if (mounted) setState(() => _busy = false);
-    }
-  }
-```
-
-### 13. Apresentar três atributos por filme
-
-**O que faz:** A lista mostra título, ano e nota. A tela também oferece atualização e informa quando o resultado está vazio.
-
-[lib/screens/consultation_screen.dart — linhas 84–97](../../lib/screens/consultation_screen.dart#L84-L97)
-
-```dart
-                : _movies.isEmpty
-                    ? const Center(child: Text('Nenhum filme encontrado.'))
-                    : RefreshIndicator(
-                        onRefresh: _load,
-                        child: ListView.builder(
-                            physics: const AlwaysScrollableScrollPhysics(),
-                            itemCount: _movies.length,
-                            itemBuilder: (_, index) {
-                              final movie = _movies[index];
-                              // Mostra título, ano e nota de cada filme.
-                              return ListTile(
+                        : RefreshIndicator(
+                            onRefresh: _load,
+                            child: ListView.builder(
+                              physics: const AlwaysScrollableScrollPhysics(),
+                              itemCount: visible.length,
+                              itemBuilder: (_, index) {
+                                final movie = visible[index];
+                                return ListTile(
                                   title: Text(movie.title),
-                                  subtitle: Text('Ano: ${movie.year}'),
-                                  trailing: Text('Nota: ${movie.rating}'));
-                            })),
+                                  subtitle: Text(
+                                      'Ano: ${movie.year}\nNota: ${movie.rating}\nDireção: ${movie.director}'),
+                                  isThreeLine: true,
+                                  trailing: IconButton(
+                                    tooltip: favorites.isFavorite(movie)
+                                        ? 'Remover dos favoritos'
+                                        : 'Adicionar aos favoritos',
+                                    onPressed: favorites.busy
+                                        ? null
+                                        : () => _toggle(movie),
+                                    icon: Icon(favorites.isFavorite(movie)
+                                        ? Icons.favorite
+                                        : Icons.favorite_border),
+                                  ),
+                                  onTap: () => Navigator.of(context).pushNamed(
+                                      RouteNames.details,
+                                      arguments: movie),
+                                );
+                              },
+                            ))),
 ```
 
-### 14. Remover a sessão no logout
+### 8. API própria FastAPI com validação JWT e isolamento por conta
 
-**O que faz:** A ação de sair tenta excluir o token e volta ao login. Se a exclusão falhar, encaminha a mensagem de erro ao formulário.
+**O que faz:** O backend em [backend/app.py](../../backend/app.py) persiste contas com hash **Argon2id** e favoritos vinculados à chave composta `(user_id, movie_id)` em SQLite. Toda rota protegida valida assinatura `HS256`, expiração, emissor (`cinepocket-api`), audiência (`cinepocket-app`) e existência do usuário no banco. O cliente nunca envia `user_id` para manipular favoritos (`extra='forbid'`).
 
-[lib/screens/consultation_screen.dart — linhas 47–56](../../lib/screens/consultation_screen.dart#L47-L56)
+[backend/app.py — linhas 161–177](../../backend/app.py#L161-L177)
 
-```dart
-  Future<void> _logout() async {
-    setState(() => _busy = true);
-    String? message;
-    try {
-      // Solicita a exclusão do token no armazenamento seguro.
-      await context.read<ApiService>().logout();
-    } on ApiFailure catch (error) {
-      message = error.message;
-    }
-    if (mounted) _login(message);
-  }
+```python
+    def current_user(credentials: Annotated[HTTPAuthorizationCredentials | None, Depends(bearer)]):
+        if credentials is None or credentials.scheme.lower() != 'bearer':
+            raise unauthorized()
+        try:
+            claims = jwt.decode(credentials.credentials, secret, algorithms=['HS256'],
+                                issuer='cinepocket-api', audience='cinepocket-app',
+                                options={'require': ['sub', 'exp', 'iat', 'iss', 'aud', 'jti']})
+            uid = str(UUID(claims['sub']))
+        except (jwt.InvalidTokenError, ValueError, TypeError, KeyError) as error:
+            raise unauthorized() from error
+        with db() as connection:
+            row = connection.execute('SELECT id, name, email FROM users WHERE id = ?', (uid,)).fetchone()
+        if row is None:
+            raise unauthorized()
+        return User(**dict(row))
 ```
 
-### 15. Configurar acesso à rede no Android
+### 9. Configurações de plataforma (Android e Apple)
 
-**O que faz:** O manifesto declara permissão de internet, desabilita tráfego HTTP sem criptografia e desativa backup do aplicativo para evitar restaurar dados protegidos sem as respectivas chaves.
+**O que faz:** O manifesto Android declara permissão de internet, bloqueia tráfego HTTP sem criptografia (`usesCleartextTraffic="false"`) e desativa backup automático (`allowBackup="false"`). As configurações de Keychain e rede cliente para Apple estão em [ios/Runner/Runner.entitlements](../../ios/Runner/Runner.entitlements), [macos/Runner/DebugProfile.entitlements](../../macos/Runner/DebugProfile.entitlements) e [macos/Runner/Release.entitlements](../../macos/Runner/Release.entitlements).
 
 [android/app/src/main/AndroidManifest.xml — linhas 1–8](../../android/app/src/main/AndroidManifest.xml#L1-L8)
 
 ```xml
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
-    <!-- Permite acesso à rede para consultar a API. -->
     <uses-permission android:name="android.permission.INTERNET" />
     <application
         android:allowBackup="false"
@@ -446,94 +381,18 @@ class ProtectedMovie {
         android:icon="@mipmap/ic_launcher">
 ```
 
-As configurações de Keychain para plataformas Apple estão em [ios/Runner/Runner.entitlements](../../ios/Runner/Runner.entitlements), [macos/Runner/DebugProfile.entitlements](../../macos/Runner/DebugProfile.entitlements) e [macos/Runner/Release.entitlements](../../macos/Runner/Release.entitlements). O projeto iOS associa o arquivo de entitlements às configurações de build em [ios/Runner.xcodeproj/project.pbxproj](../../ios/Runner.xcodeproj/project.pbxproj).
-
 ## Evidências nos testes automatizados
 
-Os testes usam `MockClient` e `MemoryTokens`: o primeiro simula a API, e o segundo simula leitura, gravação e exclusão. Eles verificam a lógica do cliente sem acessar a rede ou o armazenamento nativo.
-
-### 16. Evidência do POST, armazenamento e GET com Bearer
-
-**O que faz:** O teste verifica o corpo do login, a gravação do JWT, o cabeçalho Authorization e os três atributos retornados.
-
-[test/api_service_test.dart — linhas 42–64](../../test/api_service_test.dart#L42-L64)
-
-```dart
-  test('login POST JSON saves JWT; GET reads storage and sends Bearer',
-      () async {
-    // Simula a API e confere os dados enviados pelo aplicativo.
-    final api = service((request) async {
-      expect(request.followRedirects, isFalse);
-      if (request.method == 'POST') {
-        expect(request.url.path, '/auth/login');
-        expect(jsonDecode(request.body),
-            {'email': 'user@example.test', 'password': 'secret'});
-        expect(request.headers['Content-Type'], 'application/json');
-        return http.Response(jsonEncode({'access_token': testToken}), 200);
-      }
-      expect(request.method, 'GET');
-      expect(request.url.path, '/movies');
-      expect(request.headers['Authorization'], 'Bearer $testToken');
-      return http.Response('[{"title":"Filme","year":2026,"rating":8.5}]', 200);
-    });
-    await api.login('user@example.test', 'secret');
-    expect(store.value, testToken);
-    final movies = await api.fetchMovies();
-    expect(movies.single.title, 'Filme');
-    expect(movies.single.year, 2026);
-    expect(movies.single.rating, 8.5);
-  });
-```
-
-### 17. Evidência do retorno ao login após 401
-
-**O que faz:** O teste de interface preenche o formulário, verifica a lista e seus três atributos, simula a expiração e confirma a exclusão do token, o retorno ao login e a remoção da tela anterior.
-
-[test/auth_flow_test.dart — linhas 28–47](../../test/auth_flow_test.dart#L28-L47)
-
-```dart
-    await tester.pumpWidget(CinePocketApp(api: api));
-    await tester.pumpAndSettle();
-    expect(find.text('Entrar'), findsOneWidget);
-    await tester.enterText(
-        find.byType(TextFormField).first, 'user@example.test');
-    await tester.enterText(find.byType(TextFormField).last, 'password');
-    await tester.tap(find.text('Entrar'));
-    await tester.pumpAndSettle();
-    expect(find.text('Cinema'), findsOneWidget);
-    expect(find.text('Ano: 2026'), findsOneWidget);
-    expect(find.text('Nota: 9.0'), findsOneWidget);
-    // Simula a expiração e confirma o retorno seguro ao login.
-    expired = true;
-    await tester.tap(find.byTooltip('Atualizar'));
-    await tester.pumpAndSettle();
-    expect(store.value, isNull);
-    expect(find.text('Entrar'), findsOneWidget);
-    expect(find.text('Sessão expirada. Entre novamente.'), findsOneWidget);
-    expect(find.text('Cinema'), findsNothing);
-    expect(Navigator.of(tester.element(find.text('Entrar'))).canPop(), isFalse);
-  });
-```
-
-Outras evidências estão em [test/api_service_test.dart](../../test/api_service_test.dart): credenciais inválidas, falhas de leitura/gravação/exclusão, token ausente, JSON inválido, falha de rede, timeout, códigos HTTP e rejeição de URL insegura. [test/auth_flow_test.dart](../../test/auth_flow_test.dart) também verifica que uma falha ao gravar o token mantém o usuário no login.
-
-## Proteção e decisões
-
-- **HTTPS:** protege os dados em trânsito entre o cliente e o ponto de terminação TLS. O app exige HTTPS na [validação da URL](../../lib/services/api_service.dart#L76-L94).
-- **SharedPreferences:** adequado para preferências não sensíveis, como tema e idioma. Não é um cofre para tokens ou credenciais. O token usa [flutter_secure_storage](../../lib/services/api_service.dart#L23-L33).
-- **Encrypt:** não foi adicionado. TLS e armazenamento seguro atendem ao escopo implementado; uma camada adicional pode fazer sentido para conteúdo que deva permanecer cifrado mesmo depois da terminação TLS, desde que exista um protocolo de gerenciamento de chaves. A análise completa está em [comunicacao-segura.md](comunicacao-segura.md#análise-do-pacote-encrypt).
-
-## Sequência sugerida para demonstrar
-
-1. Configure uma API HTTPS que siga o [contrato documentado](comunicacao-segura.md#execução-e-contrato-da-api).
-2. Mostre a tela de login e explique a validação dos campos e a chamada a `ApiService.login`.
-3. Mostre a resposta do servidor sendo interpretada e o token sendo salvo em armazenamento seguro.
-4. Após entrar, mostre a lista e identifique título, ano e nota. Explique a leitura do token e o cabeçalho Bearer no GET.
-5. Invalide o token no servidor e atualize a lista. Mostre a mensagem de sessão expirada e o retorno automático ao login.
-6. Apresente os testes de contrato e de navegação como evidências automatizadas.
+- **31 testes Flutter** (`flutter test`) sem avisos no `flutter analyze`:
+  - [test/api_service_test.dart](../../test/api_service_test.dart): login POST JSON, gravação e leitura no `TokenStore`, cabeçalho `Authorization: Bearer`, rejeição de credenciais inválidas, 401 com exclusão do token (inclusive quando a exclusão falha), falhas de leitura/gravação, JSON inválido, falha de rede/servidor indisponível, timeout, códigos HTTP 302/403/500/503 e rejeição de URLs sem HTTPS.
+  - [test/auth_flow_test.dart](../../test/auth_flow_test.dart): login → consulta protegida → 401 ao alterar favorito limpa token, dados e pilha de navegação; falha ao gravar token mantém usuário no login.
+  - [test/public_api_test.dart](../../test/public_api_test.dart): favoritos com Bearer, limpeza no logout, 401 em mutação de favorito, falha 503 sem corromper estado local e busca autenticada `/movies?q=...`.
+  - [test/widget_test.dart](../../test/widget_test.dart): troca de contas A → B → A garantindo isolamento e restauração dos favoritos.
+- **8 testes do backend** (`python -m pytest backend/tests -v`) em [backend/tests/test_api.py](../../backend/tests/test_api.py): cadastro/login, hash Argon2id, isolamento de favoritos entre contas, persistência após reinicialização da API, 401 sem token ou com JWT expirado/adulterado/emissor ou audiência incorretos, rejeição de tentativa de escolher `user_id` e tratamento de indisponibilidade do catálogo externo (503).
 
 ## Validação realizada e limitações
 
-Na implementação anterior foram executados `flutter analyze`, `flutter test` e `flutter build web` com Flutter 3.47.9 em Docker. A análise terminou sem avisos, os **29 testes passaram** e o build web foi concluído. O build emitiu um aviso relacionado à fonte Cupertino; ele não impediu a compilação.
-
-Essas evidências cobrem o cliente e a interface com dependências simuladas. A execução completa ainda exige uma API HTTPS compatível e credenciais; a integração com o servidor real e o Keychain/Keystore em dispositivo não foram validados.
+- **Validado:** `flutter analyze` (0 avisos), `flutter test` (**31 testes aprovados**), `pytest backend/tests` (**8 testes aprovados**), fluxo Web com API HTTPS local documentado em [docs/entrega/README.md](../../docs/entrega/README.md) e relatório em [docs/entrega/relatorio-seguranca.pdf](../../docs/entrega/relatorio-seguranca.pdf).
+- **Limitações registradas:**
+  - Os testes automatizados do Flutter utilizam `MockClient` e `MemoryTokens`; o funcionamento do cofre nativo (`Keystore` no Android e `Keychain` no iOS) ainda precisa ser validado em aparelho ou emulador real.
+  - A API é didática para desenvolvimento local em HTTPS (`127.0.0.1:8443` com certificado autoassinado) e não inclui refresh token, revogação de JWT no servidor ou recuperação de senha.

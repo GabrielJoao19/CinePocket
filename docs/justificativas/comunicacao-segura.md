@@ -1,179 +1,128 @@
-# Comunicação segura — issue #3
+# Comunicação segura do CinePocket
 
-## Execução e contrato da API
+## Arquitetura e vínculo com o usuário
 
-A issue não informa uma API, credenciais de teste ou esquema JSON. O cliente
-implementa o contrato abaixo; a API deve ser fornecida separadamente. Sem
-`API_BASE_URL`, o login mostra um erro de configuração e não envia credenciais.
-O catálogo antigo continua disponível como demonstração visual, identificado
-explicitamente e separado da consulta real.
+O Flutter usa uma API própria em FastAPI para cadastro, login JWT, identidade,
+consulta de filmes e favoritos. A API consulta o catálogo público Studio Ghibli
+por HTTPS. O token da conta nunca é encaminhado ao provedor externo. A solução
+anterior baseada em DummyJSON foi substituída porque não persistia os favoritos
+reais do CinePocket por usuário.
 
-O Dockerfile fixa Flutter 3.47.9; use essa versão para reproduzir o ambiente
-de validação e o lockfile.
+Fluxo:
 
-```sh
-flutter pub get
-flutter run --dart-define=API_BASE_URL=https://api.seu-dominio.com
-```
+1. Criar conta (`POST /auth/register`). A API armazena hash Argon2id da senha.
+2. Informar e-mail/senha (`POST /auth/login` HTTPS, corpo JSON).
+3. Extrair `access_token` e gravá-lo em `flutter_secure_storage`. Se a gravação
+   falhar, o usuário permanece no login. A senha não é persistida.
+4. Abrir automaticamente a consulta. A API recebe o Bearer lido do armazenamento
+   seguro em `/me`, `/movies` e `/favorites`; o aplicativo exibe título, ano,
+   nota e direção dos filmes, além da identidade da conta autenticada.
+5. Adicionar/remover favorito pelo ID do filme. A API determina o dono pelo
+   `sub` do JWT validado; não confia em um `user_id` enviado pelo cliente.
+6. Sair ou receber 401 limpa o token, a identidade e os favoritos em memória.
+   O 401 de qualquer operação protegida também limpa a navegação até o login.
+7. Ao abrir novamente, um token armazenado leva à revalidação no servidor.
+   Ao entrar novamente na mesma conta, os favoritos são recarregados do SQLite.
 
-Também é possível configurar `API_LOGIN_PATH` (padrão `/auth/login`) e
-`API_MOVIES_PATH` (padrão `/movies`). Os caminhos devem iniciar com `/`.
-Uma base como `https://host/api/v1` preserva o prefixo `/api/v1`.
-Essas configurações são públicas; não colocar segredos em `--dart-define`.
+O catálogo de filmes é comum; os favoritos são privados por conta. A API rejeita
+consultas protegidas sem token e valida assinatura, algoritmo permitido, prazo,
+emissor e audiência. O cliente verifica a estrutura do JWT recebido, mas essa
+verificação local não substitui a validação da assinatura no servidor.
 
-### Autenticação
+## flutter_secure_storage e SharedPreferences
 
-`POST /auth/login`, `Content-Type: application/json`, corpo:
+O JWT é uma credencial Bearer: quem o obtém pode apresentar-se como o usuário.
+Por isso é gravado somente em `flutter_secure_storage`, que usa mecanismos de
+proteção da plataforma (Keychain em Apple e armazenamento criptografado com
+proteção das chaves em Android). A leitura ocorre antes de cada chamada protegida.
+As dependências e permissões das plataformas já estão no projeto; Android
+bloqueia cleartext e desabilita backup do app. Na Web, o mecanismo depende do
+navegador, exige HTTPS/localhost e não elimina riscos de XSS. Testes Web não
+comprovam o funcionamento do Keychain/Keystore em aparelho.
 
-```json
-{"email":"usuario@exemplo.com","password":"senha informada no formulário"}
-```
+SharedPreferences é adequado para dados simples não sensíveis: tema, idioma,
+preferência de interface e última pesquisa não confidencial. Não é um cofre de
+credenciais e não deve conter senha nem JWT. Não é necessário instalar esse
+pacote para a atividade: a comparação técnica é documentada, enquanto o token
+usa obrigatoriamente o armazenamento seguro.
 
-Resposta 200 (ou outro 2xx): objeto com `access_token` contendo um JWT assinado
-no formato compacto de três segmentos. Exemplo do formato de resposta:
+## HTTPS
 
-```json
-{"access_token":"<header-base64url>.<payload-base64url>.<signature-base64url>"}
-```
+TLS protege confidencialidade e integridade dos dados em trânsito e autentica o
+servidor por certificado confiável. Protege a senha, o Bearer e o JSON até o
+ponto onde TLS termina; não protege automaticamente banco, logs e dados já
+abertos no cliente/servidor. JWT assinado não é necessariamente criptografado.
 
-Esse exemplo é ilustrativo e não é um token utilizável. O backend deve validar
-credenciais e emitir/verificar assinatura, expiração, emissor e audiência. O app
-verifica apenas a estrutura do token recebido; isso não autentica sua assinatura.
-Credenciais inválidas devem retornar 401 (403 no login também é tratado).
-Não há refresh token neste escopo: uma sessão expirada exige novo login.
+Todas as chamadas REST do app e a consulta externa do backend usam HTTPS.
+O Flutter rejeita HTTP e não desativa a validação de certificados. Para teste
+local há um inicializador HTTPS; o certificado local precisa ser confiado no
+cliente. Para produção, usar certificado público válido e renovação apropriada.
+No celular, localhost aponta para o próprio aparelho; configure uma API acessível.
 
-### Consulta protegida
-
-`GET /movies`, `Accept: application/json`, `Authorization: Bearer <token>`.
-O token é lido do armazenamento seguro antes da consulta. Resposta 200:
-
-```json
-[
-  {"title":"Duna: Parte 2","year":2024,"rating":8.8},
-  {"title":"Interestelar","year":2014,"rating":8.7}
-]
-```
-
-`title` deve ser texto não vazio, `year` inteiro e `rating` numérico. A lista
-mostra os três atributos, aceita lista vazia e rejeita estrutura incompatível.
-O backend deve retornar 401 para token ausente, inválido ou expirado; 403 na
-consulta significa acesso negado e não apaga uma sessão válida.
-
-Ao receber 401, o app tenta remover o token, descarta os dados da tela e limpa a
-pilha de navegação até o login. Se a remoção falhar, bloqueia a reutilização do
-token em memória e informa o erro. O login oferece “Limpar sessão armazenada”
-para tentar novamente. Uma nova execução começa sempre no login, sem recuperar
-automaticamente tokens que possam ter permanecido após falha de remoção.
-Logout segue o mesmo comportamento de exclusão e bloqueio. A senha não é
-persistida nem registrada em logs e seu campo é limpo após autenticação.
-
-## Erros e recuperação
-
-| Situação | Comportamento |
-| --- | --- |
-| Rede indisponível, DNS ou falha TLS | Mensagem de indisponibilidade; permite tentar novamente |
-| Resposta demora mais de 15 segundos | Mensagem de timeout, abrangendo envio e leitura da resposta |
-| Login 401/403 | E-mail ou senha inválidos, permanece no formulário |
-| Consulta 401 | Remove token e retorna automaticamente ao login |
-| HTTP 5xx | Mensagem de servidor indisponível |
-| Outros códigos não 2xx, inclusive redirects | Erro de requisição, sem interpretar como dados |
-| JSON inválido ou formato incompatível | Mensagem de resposta/dados inválidos |
-| Leitura segura falha | Não envia GET; oferece nova tentativa |
-| Gravação segura falha | Não abre consulta; permite repetir login |
-| Exclusão segura falha | Bloqueia sessão local, retorna ao login e permite repetir exclusão |
-
-As operações possuem indicador de progresso e desabilitam botões durante o
-processamento para evitar envio duplicado. Respostas e exceções internas não
-são mostradas diretamente nem registradas com credenciais.
-
-## HTTPS e proteção em trânsito
-
-HTTPS usa TLS para confidencialidade e integridade do tráfego e autenticação do
-servidor por certificado. Protege credenciais, cabeçalhos e JSON entre o cliente
-e o ponto onde TLS termina. Não protege dados já descriptografados no servidor,
-logs, um dispositivo comprometido ou o conteúdo em repouso.
-
-O cliente só aceita URLs HTTPS e não segue redirecionamentos; portanto não
-reenvia credenciais deliberadamente a um destino HTTP. Não há bypass de
-certificados. Android bloqueia tráfego cleartext. Na Web, políticas de redirect
-e TLS também dependem do navegador; a API deve responder diretamente no endpoint
-HTTPS e permitir CORS para a origem do app, POST/GET e cabeçalhos
-`Content-Type`/`Authorization` (incluindo preflight OPTIONS).
-
-HTTP permitiria interceptação e alteração das credenciais e do Bearer token,
-mesmo numa rede de desenvolvimento. Este projeto não habilita essa exceção.
-Para desenvolvimento local, use HTTPS com certificado confiável pelo dispositivo
-ou um proxy HTTPS de desenvolvimento. Em produção, configure certificado válido,
-TLS atualizado, renovação automática e HTTPS também entre proxy e backend quando
-atravessarem uma rede não confiável. Redirecionar HTTP para HTTPS não desfaz o
-vazamento de uma primeira requisição enviada sem TLS.
-
-## SharedPreferences versus flutter_secure_storage
-
-SharedPreferences armazena pares simples para preferências: tema, idioma,
-configuração da interface e última pesquisa não sensível. Não oferece um cofre
-criptográfico para segredos, e sua documentação não garante persistência imediata
-de dados críticos. Um token é uma credencial Bearer: quem o obtém pode usá-lo.
-Por isso não deve ser salvo em preferências comuns, código-fonte ou logs.
-
-`flutter_secure_storage` usa mecanismos de armazenamento seguro por plataforma,
-como Keychain nas plataformas Apple e criptografia com chaves protegidas no
-Android. O projeto usa esse pacote exclusivamente para o token; não persiste a
-senha. HTTPS cuida do trânsito, e o armazenamento seguro cuida do token em
-repouso. Nenhum deles elimina todos os riscos de um dispositivo comprometido.
-
-A configuração Android desabilita backups do app para evitar restauração de
-material criptografado sem as chaves correspondentes. iOS/macOS incluem os
-entitlements de Keychain; macOS também permite conexões de rede de saída.
-Verifique assinatura e provisionamento no Xcode ao executar em dispositivo.
-Linux exige as dependências do plugin (`libsecret-1-dev`, `libjsoncpp-dev` no
-build e um serviço Secret Service/keyring disponível na sessão). Na Web,
-execute em HTTPS ou localhost: o armazenamento depende do navegador e não é
-imune a XSS. A origem deve ser confiável e scripts devem ser controlados.
-
-Fontes: [SharedPreferences](https://pub.dev/packages/shared_preferences),
-[flutter_secure_storage](https://pub.dev/packages/flutter_secure_storage),
-[configuração da versão 10](https://pub.dev/packages/flutter_secure_storage/versions/10.0.0).
+Se o desenvolvimento usasse HTTP, credenciais e tokens poderiam ser capturados
+ou alterados por alguém no caminho. Migrar para HTTPS exigiria certificado,
+configuração TLS no servidor/proxy e atualização das URLs, sem aceitar
+certificados inválidos. Redirecionar uma chamada HTTP não desfaz seu vazamento
+inicial. A API pode usar HTTP em loopback atrás de um proxy TLS, mas esse trecho
+precisa ser protegido se atravessar rede não confiável.
 
 ## Análise do pacote Encrypt
 
-Não adicionamos `encrypt`: para credenciais enviadas à própria API e o token
-local, TLS validado e o armazenamento seguro cobrem as necessidades deste
-escopo. Criptografar o JSON com uma chave fixa embutida no app não acrescentaria
-uma proteção confiável; a chave poderia ser extraída e precisaria ser gerenciada
-pelo backend também. JWT assinado não é, por si só, criptografado: suas claims
-não devem carregar segredos.
+Não é necessário adicionar Encrypt neste escopo: HTTPS protege as requisições e
+o cofre protege o JWT em repouso. Não há requisito de manter o catálogo ou os
+favoritos cifrados de ponta a ponta após terminarem TLS. Uma chave fixa embutida
+no aplicativo seria extraível e não resolveria esse problema.
 
-Uma camada adicional seria pertinente para conteúdo que precise permanecer
-cifrado após terminar TLS (por exemplo, mensagens entre usuários que o servidor
-não deva ler), arquivos sensíveis armazenados fora do cofre, ou campos que
-precisem atravessar intermediários sem revelar o conteúdo. Essas situações
-exigem um protocolo definido, acordo de chaves, autenticação, rotação, revogação,
-nonces únicos e criptografia autenticada. Instalar um pacote sozinho não oferece
-criptografia ponta a ponta.
+Uma camada adicional pode fazer sentido para documentos sensíveis armazenados
+fora do cofre, conteúdo que deva permanecer cifrado diante de intermediários ou
+mensagens que nem o servidor deva ler. Seriam necessários protocolo interoperável,
+criptografia autenticada, chaves por usuário, distribuição, rotação, recuperação
+e nonces corretos; instalar um pacote não cria essas garantias sozinho.
 
-Vantagens: restringir leitura por intermediários e proteger conteúdo fora do
-canal TLS. Desvantagens: maior complexidade de chaves e recuperação, custo de
-processamento, payload maior, dificuldade de busca no servidor e risco de erros
-criptográficos. Caso esse requisito apareça, deve ser projetado e revisado como
-um protocolo interoperável com o backend; não se deve substituir HTTPS.
+Vantagens: proteção do conteúdo além do canal TLS e menor exposição a alguns
+intermediários. Desvantagens: complexidade de chaves, recuperação difícil, maior
+custo de processamento/payload, dificuldade de busca e risco de implementação.
+Encrypt não substitui HTTPS, autorização por usuário ou armazenamento seguro.
 
-## Verificação
+## Tratamento de erros
 
-```sh
-flutter analyze
-flutter test
-flutter build web
-```
+| Cenário | Resposta do aplicativo |
+| --- | --- |
+| Rede, DNS, TLS ou servidor indisponível | Mensagem de indisponibilidade e nova tentativa |
+| Timeout de 15 segundos | Mensagem de tempo esgotado |
+| Credenciais inválidas | Mantém login com aviso, não salva sessão |
+| JWT inválido/expirado, HTTP 401 | Apaga token e dados da conta, retorna ao login |
+| JSON inválido ou estrutura incompatível | Mensagem de dados/resposta inválida |
+| Falha de leitura segura | Não envia requisição protegida, informa erro |
+| Falha de gravação segura | Não abre a consulta, permite repetir login |
+| Falha de exclusão segura | Bloqueia reutilização nesta execução e informa erro |
+| Falha ao salvar favorito | Não confirma alteração local sem sucesso do servidor |
 
-Os testes usam HTTP e armazenamento substituíveis para verificar contrato,
-Bearer, sucesso, 401, falhas de leitura/gravação/exclusão, timeout, rede, JSON,
-HTTPS obrigatório e navegação. Esses testes não substituem validação do plugin
-nativo em dispositivo nem teste integrado com a API real.
+Se a exclusão do cofre falhar, o app oferece nova tentativa. Um token que tenha
+permanecido no disco só será aceito após revalidação no servidor na próxima
+execução. Respostas de uma sessão anterior são descartadas após troca de conta.
 
-Roteiro manual: configurar API compatível; entrar com credenciais válidas;
-confirmar título/ano/nota; atualizar a lista; expirar o token no servidor e
-atualizar novamente; confirmar retorno ao login e ausência de retorno à lista
-pelo botão voltar. Repetir com senha errada, servidor parado, resposta lenta,
-JSON malformado, lista vazia e logout. Testar Keychain/Keystore nos dispositivos
-alvo e confirmar que não há token em preferências comuns ou logs.
+## Dificuldades e validação
+
+A principal dificuldade foi combinar uma API de filmes pública com autenticação
+própria e dados privados por conta. Foi necessário introduzir IDs estáveis de
+filmes, persistência relacional e limpeza do cache ao trocar de usuário. Outra
+dificuldade foi executar testes com o cofre nativo: testes automatizados usam
+uma implementação substituível e devem ser complementados por teste em aparelho.
+Certificados locais também precisam de confiança explícita no cliente.
+
+Testar Flutter com `flutter analyze`, `flutter test` e `flutter build web`.
+Testar servidor com `python -m pytest backend/tests -q` no ambiente de dependências.
+O caso principal é: A favorita um filme; B não o vê e não pode removê-lo de A;
+A entra novamente e recupera o filme, inclusive após reiniciar a API.
+
+Para executar, consulte [backend/README.md](../../backend/README.md).
+Capturas e relatório ficam em `docs/entrega/`; registre se foram feitas na Web
+ou em aparelho. A análise não afirma validação nativa sem executá-la.
+
+Fontes:
+- [FastAPI: JWT e hash de senhas](https://fastapi.tiangolo.com/tutorial/security/oauth2-jwt/)
+- [PyJWT: validação de claims](https://pyjwt.readthedocs.io/en/latest/api.html)
+- [flutter_secure_storage](https://pub.dev/packages/flutter_secure_storage)
+- [SharedPreferences](https://pub.dev/packages/shared_preferences)
+- [Catálogo Studio Ghibli](https://ghibliapi.vercel.app/)

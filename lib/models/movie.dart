@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 /// Modelo simples com dados MOCK (será substituído pela API do TMDB depois).
 class Movie {
+  final String id;
   final String title;
   final String originalTitle;
   final int year;
@@ -10,9 +11,12 @@ class Movie {
   final String duration;
   final String ageRating;
   final String savedAt;
+  final String director;
+  final String description;
   final List<Color> colors; // cores do placeholder do pôster
 
   const Movie({
+    this.id = '',
     required this.title,
     this.originalTitle = '',
     required this.year,
@@ -21,8 +25,37 @@ class Movie {
     this.duration = '',
     this.ageRating = '',
     this.savedAt = '',
+    this.director = '',
+    this.description = '',
     required this.colors,
   });
+
+  factory Movie.fromJson(dynamic json) {
+    if (json is! Map<String, dynamic> ||
+        json['id'] is! String ||
+        (json['id'] as String).isEmpty ||
+        json['title'] is! String ||
+        (json['title'] as String).trim().isEmpty ||
+        json['year'] is! int ||
+        json['rating'] is! num) {
+      throw const FormatException();
+    }
+    return Movie(
+        id: json['id'],
+        title: json['title'],
+        year: json['year'],
+        rating: (json['rating'] as num).toDouble(),
+        originalTitle:
+            json['original_title'] is String ? json['original_title'] : '',
+        director: json['director'] is String ? json['director'] : '',
+        description: json['description'] is String ? json['description'] : '',
+        duration: json['duration'] is String ? json['duration'] : '',
+        genres: json['genres'] is List &&
+                (json['genres'] as List).every((g) => g is String)
+            ? List<String>.from(json['genres'])
+            : const [],
+        colors: const [Color(0xFF1F2A44), Color(0xFF8FA6C9)]);
+  }
 }
 
 const featuredMovies = <Movie>[

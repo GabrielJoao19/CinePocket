@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 import '../navigation/route_names.dart';
 import '../services/api_service.dart';
 import '../theme.dart';
+import 'register_screen.dart';
 
 class LoginScreen extends StatefulWidget {
   final String? message;
@@ -17,6 +18,30 @@ class _LoginScreenState extends State<LoginScreen> {
   final _password = TextEditingController();
   bool _busy = false;
   late String? _error = widget.message;
+
+  @override
+  void initState() {
+    super.initState();
+    if (widget.message == null) {
+      _busy = true;
+      WidgetsBinding.instance.addPostFrameCallback((_) => _restoreSession());
+    }
+  }
+
+  Future<void> _restoreSession() async {
+    try {
+      final saved = await context.read<ApiService>().hasSession();
+      if (!mounted) return;
+      if (saved) {
+        Navigator.of(context)
+            .pushNamedAndRemoveUntil(RouteNames.consultation, (_) => false);
+      }
+    } on ApiFailure catch (error) {
+      if (mounted) setState(() => _error = error.message);
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
 
   @override
   void dispose() {
@@ -80,7 +105,7 @@ class _LoginScreenState extends State<LoginScreen> {
                             fontSize: 28,
                             fontWeight: FontWeight.w800,
                             color: AppColors.yellow)),
-                    const SizedBox(height: 32),
+                    const SizedBox(height: 16),
                     TextFormField(
                         controller: _email,
                         enabled: !_busy,
@@ -123,6 +148,13 @@ class _LoginScreenState extends State<LoginScreen> {
                                 child:
                                     CircularProgressIndicator(strokeWidth: 2))
                             : const Text('Entrar')),
+                    TextButton(
+                        onPressed: _busy
+                            ? null
+                            : () => Navigator.of(context).push(
+                                MaterialPageRoute(
+                                    builder: (_) => const RegisterScreen())),
+                        child: const Text('Criar conta')),
                     TextButton(
                         onPressed: _busy ? null : _clearSession,
                         child: const Text('Limpar sessão armazenada')),

@@ -53,7 +53,8 @@ void main() {
       expect(request.method, 'GET');
       expect(request.url.path, '/movies');
       expect(request.headers['Authorization'], 'Bearer $testToken');
-      return http.Response('[{"title":"Filme","year":2026,"rating":8.5}]', 200);
+      return http.Response(
+          '[{"id":"film-1","title":"Filme","year":2026,"rating":8.5}]', 200);
     });
     await api.login('user@example.test', 'secret');
     expect(store.value, testToken);
