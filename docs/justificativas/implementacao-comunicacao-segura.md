@@ -381,6 +381,18 @@ class SecureTokenStore implements TokenStore {
         android:icon="@mipmap/ic_launcher">
 ```
 
+## Padrões de projeto adotados
+
+O projeto aplica padrões leves e idiomáticos de Dart/Flutter e FastAPI sem introduzir abstrações desnecessárias:
+
+- **Factory (`Factory Constructor` e `Application Factory`):**
+  - `Movie.fromJson` ([lib/models/movie.dart — linhas 25–50](../../lib/models/movie.dart#L25-L50)) e `SessionUser.fromJson` ([lib/services/api_service.dart — linhas 42–52](../../lib/services/api_service.dart#L42-L52)) centralizam a validação estrutural do JSON e a criação segura dos modelos de domínio.
+  - `create_app(...)` ([backend/app.py — linhas 112–244](../../backend/app.py#L112-L244)) atua como *Application Factory*, permitindo instanciar a API FastAPI com banco SQLite, segredo JWT, TTL e fonte de catálogo configuráveis para execução local, implantação e testes isolados.
+- **Strategy / Injeção de Dependência:**
+  - A abstração `TokenStore` ([lib/services/api_service.dart — linhas 19–35](../../lib/services/api_service.dart#L19-L35)) desacopla a regra de sessão do armazenamento concreto (`SecureTokenStore` com `flutter_secure_storage` em execução real e `MemoryTokens` nos testes automatizados). O mesmo vale para `http.Client` (`MockClient` nos testes).
+- **Observer (`ChangeNotifier` + `Provider`):**
+  - `ApiService` notifica `FavoritesProvider` ([lib/providers/favorites_provider.dart — linhas 11–21](../../lib/providers/favorites_provider.dart#L11-L21)) sempre que `sessionVersion` muda (login, logout ou HTTP 401), garantindo limpeza automática do cache de favoritos da conta anterior.
+
 ## Evidências nos testes automatizados
 
 - **35 testes Flutter** (`flutter test`) sem avisos no `flutter analyze`:
