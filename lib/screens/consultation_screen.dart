@@ -4,6 +4,7 @@ import '../models/movie.dart';
 import '../navigation/route_names.dart';
 import '../providers/favorites_provider.dart';
 import '../services/api_service.dart';
+import '../theme.dart';
 
 /// A consulta protegida é a tela principal após login/restauração da sessão.
 class ConsultationScreen extends StatefulWidget {
@@ -56,6 +57,11 @@ class _ConsultationScreenState extends State<ConsultationScreen> {
     }
   }
 
+  void _clearSearch() {
+    _query.clear();
+    _load();
+  }
+
   Future<void> _toggle(Movie movie) async {
     try {
       await context.read<FavoritesProvider>().toggleFavorite(movie);
@@ -64,7 +70,8 @@ class _ConsultationScreenState extends State<ConsultationScreen> {
     } on ApiFailure catch (error) {
       if (mounted) {
         ScaffoldMessenger.of(context)
-            .showSnackBar(SnackBar(content: Text(error.message)));
+          ..clearSnackBars()
+          ..showSnackBar(SnackBar(content: Text(error.message)));
       }
     }
   }
@@ -78,6 +85,7 @@ class _ConsultationScreenState extends State<ConsultationScreen> {
       message = error.message;
     }
     if (mounted) {
+      ScaffoldMessenger.of(context).clearSnackBars();
       Navigator.of(context).pushNamedAndRemoveUntil(
           RouteNames.login, (_) => false,
           arguments: message);
@@ -102,25 +110,52 @@ class _ConsultationScreenState extends State<ConsultationScreen> {
       ]),
       body: Column(children: [
         if (user != null)
-          ListTile(
-            leading: const Icon(Icons.verified_user),
-            title: Text('${user.name} · ${user.email}'),
-            subtitle: const Text(
-                'Sessão no armazenamento seguro. Favoritos exclusivos desta conta.'),
+          Card(
+            margin: const EdgeInsets.fromLTRB(16, 8, 16, 8),
+            color: AppColors.surface,
+            shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12),
+                side: const BorderSide(color: AppColors.border)),
+            child: ListTile(
+              leading:
+                  const Icon(Icons.verified_user, color: AppColors.yellow),
+              title: Text('${user.name} · ${user.email}',
+                  style: const TextStyle(fontWeight: FontWeight.w600)),
+              subtitle: const Text(
+                  'Sessão no armazenamento seguro. Favoritos exclusivos desta conta.',
+                  style: TextStyle(color: AppColors.textSecondary)),
+            ),
           ),
         if (!_favoritesOnly)
           Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16),
-              child: TextField(
-                controller: _query,
-                enabled: !_busy,
-                decoration: InputDecoration(
-                    labelText: 'Buscar filmes...',
-                    suffixIcon: IconButton(
-                        onPressed: _busy || favorites.busy ? null : _load,
-                        icon: const Icon(Icons.search),
-                        tooltip: 'Buscar')),
-                onSubmitted: (_) => _load(),
+              padding: const EdgeInsets.fromLTRB(16, 4, 16, 8),
+              child: ValueListenableBuilder<TextEditingValue>(
+                valueListenable: _query,
+                builder: (_, value, __) => TextField(
+                  controller: _query,
+                  enabled: !_busy,
+                  decoration: InputDecoration(
+                      labelText: 'Buscar filmes...',
+                      border: const OutlineInputBorder(),
+                      suffixIcon: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          if (value.text.isNotEmpty)
+                            IconButton(
+                                onPressed: _busy || favorites.busy
+                                    ? null
+                                    : _clearSearch,
+                                icon: const Icon(Icons.clear),
+                                tooltip: 'Limpar busca'),
+                          IconButton(
+                              onPressed:
+                                  _busy || favorites.busy ? null : _load,
+                              icon: const Icon(Icons.search),
+                              tooltip: 'Buscar'),
+                        ],
+                      )),
+                  onSubmitted: (_) => _load(),
+                ),
               )),
         Expanded(
             child: _busy
@@ -132,7 +167,11 @@ class _ConsultationScreenState extends State<ConsultationScreen> {
                             child: Column(
                                 mainAxisSize: MainAxisSize.min,
                                 children: [
+                                  const Icon(Icons.cloud_off,
+                                      size: 40, color: AppColors.textSecondary),
+                                  const SizedBox(height: 12),
                                   Text(_error!, textAlign: TextAlign.center),
+                                  const SizedBox(height: 12),
                                   FilledButton(
                                       onPressed: _load,
                                       child: const Text('Tentar novamente'))
@@ -145,29 +184,46 @@ class _ConsultationScreenState extends State<ConsultationScreen> {
                         : RefreshIndicator(
                             onRefresh: _load,
                             child: ListView.builder(
+                              padding: const EdgeInsets.fromLTRB(16, 4, 16, 16),
                               physics: const AlwaysScrollableScrollPhysics(),
                               itemCount: visible.length,
                               itemBuilder: (_, index) {
                                 final movie = visible[index];
-                                return ListTile(
-                                  title: Text(movie.title),
-                                  subtitle: Text(
-                                      'Ano: ${movie.year}\nNota: ${movie.rating}\nDireção: ${movie.director}'),
-                                  isThreeLine: true,
-                                  trailing: IconButton(
-                                    tooltip: favorites.isFavorite(movie)
-                                        ? 'Remover dos favoritos'
-                                        : 'Adicionar aos favoritos',
-                                    onPressed: favorites.busy
-                                        ? null
-                                        : () => _toggle(movie),
-                                    icon: Icon(favorites.isFavorite(movie)
-                                        ? Icons.favorite
-                                        : Icons.favorite_border),
+                                final isFav = favorites.isFavorite(movie);
+                                return Card(
+                                  margin: const EdgeInsets.only(bottom: 10),
+                                  color: AppColors.surface,
+                                  shape: RoundedRectangleBorder(
+                                      borderRadius: BorderRadius.circular(12),
+                                      side: const BorderSide(
+                                          color: AppColors.border)),
+                                  child: ListTile(
+                                    title: Text(movie.title,
+                                        style: const TextStyle(
+                                            fontWeight: FontWeight.w700)),
+                                    subtitle: Text(
+                                        'Ano: ${movie.year}\nNota: ${movie.rating}\nDireção: ${movie.director}'),
+                                    isThreeLine: true,
+                                    trailing: IconButton(
+                                      tooltip: isFav
+                                          ? 'Remover dos favoritos'
+                                          : 'Adicionar aos favoritos',
+                                      onPressed: favorites.busy
+                                          ? null
+                                          : () => _toggle(movie),
+                                      icon: Icon(
+                                        isFav
+                                            ? Icons.favorite
+                                            : Icons.favorite_border,
+                                        color: isFav
+                                            ? AppColors.heart
+                                            : AppColors.textSecondary,
+                                      ),
+                                    ),
+                                    onTap: () => Navigator.of(context)
+                                        .pushNamed(RouteNames.details,
+                                            arguments: movie),
                                   ),
-                                  onTap: () => Navigator.of(context).pushNamed(
-                                      RouteNames.details,
-                                      arguments: movie),
                                 );
                               },
                             ))),

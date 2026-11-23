@@ -275,7 +275,7 @@ class SecureTokenStore implements TokenStore {
 
 **O que faz:** `Movie.fromJson` valida os campos obrigatórios (`id`, `title`, `year`, `rating`) e lê os campos adicionais (`director`, `description`, `original_title`, `duration`, `genres`). `ConsultationScreen` carrega identidade (`/me`), filmes (`/movies`) e favoritos (`/favorites`) e exibe **título, ano, nota e direção** em cada item da lista (acima do mínimo de três atributos exigido pela issue).
 
-[lib/models/movie.dart — linhas 33–58](../../lib/models/movie.dart#L33-L58)
+[lib/models/movie.dart — linhas 25–50](../../lib/models/movie.dart#L25-L50)
 
 ```dart
   factory Movie.fromJson(dynamic json) {
@@ -306,7 +306,7 @@ class SecureTokenStore implements TokenStore {
   }
 ```
 
-[lib/screens/consultation_screen.dart — linhas 145–173](../../lib/screens/consultation_screen.dart#L145-L173)
+[lib/screens/consultation_screen.dart — linhas 184–229](../../lib/screens/consultation_screen.dart#L184-L229)
 
 ```dart
                         : RefreshIndicator(
@@ -383,16 +383,17 @@ class SecureTokenStore implements TokenStore {
 
 ## Evidências nos testes automatizados
 
-- **31 testes Flutter** (`flutter test`) sem avisos no `flutter analyze`:
+- **35 testes Flutter** (`flutter test`) sem avisos no `flutter analyze`:
   - [test/api_service_test.dart](../../test/api_service_test.dart): login POST JSON, gravação e leitura no `TokenStore`, cabeçalho `Authorization: Bearer`, rejeição de credenciais inválidas, 401 com exclusão do token (inclusive quando a exclusão falha), falhas de leitura/gravação, JSON inválido, falha de rede/servidor indisponível, timeout, códigos HTTP 302/403/500/503 e rejeição de URLs sem HTTPS.
   - [test/auth_flow_test.dart](../../test/auth_flow_test.dart): login → consulta protegida → 401 ao alterar favorito limpa token, dados e pilha de navegação; falha ao gravar token mantém usuário no login.
   - [test/public_api_test.dart](../../test/public_api_test.dart): favoritos com Bearer, limpeza no logout, 401 em mutação de favorito, falha 503 sem corromper estado local e busca autenticada `/movies?q=...`.
+  - [test/screens_ux_test.dart](../../test/screens_ux_test.dart): cadastro de conta (sucesso e conflito 409), limpeza de snackbar no login, tela de detalhes com favoritos e botão de limpar busca.
   - [test/widget_test.dart](../../test/widget_test.dart): troca de contas A → B → A garantindo isolamento e restauração dos favoritos.
 - **8 testes do backend** (`python -m pytest backend/tests -v`) em [backend/tests/test_api.py](../../backend/tests/test_api.py): cadastro/login, hash Argon2id, isolamento de favoritos entre contas, persistência após reinicialização da API, 401 sem token ou com JWT expirado/adulterado/emissor ou audiência incorretos, rejeição de tentativa de escolher `user_id` e tratamento de indisponibilidade do catálogo externo (503).
 
 ## Validação realizada e limitações
 
-- **Validado:** `flutter analyze` (0 avisos), `flutter test` (**31 testes aprovados**), `pytest backend/tests` (**8 testes aprovados**), fluxo Web com API HTTPS local documentado em [docs/entrega/README.md](../../docs/entrega/README.md) e relatório em [docs/entrega/relatorio-seguranca.pdf](../../docs/entrega/relatorio-seguranca.pdf).
+- **Validado:** `flutter analyze` (0 avisos), `flutter test` (**35 testes aprovados**), `pytest backend/tests` (**8 testes aprovados**), fluxo Web com API HTTPS local documentado em [docs/entrega/README.md](../../docs/entrega/README.md) e relatório em [docs/entrega/relatorio-seguranca.pdf](../../docs/entrega/relatorio-seguranca.pdf).
 - **Limitações registradas:**
   - Os testes automatizados do Flutter utilizam `MockClient` e `MemoryTokens`; o funcionamento do cofre nativo (`Keystore` no Android e `Keychain` no iOS) ainda precisa ser validado em aparelho ou emulador real.
   - A API é didática para desenvolvimento local em HTTPS (`127.0.0.1:8443` com certificado autoassinado) e não inclui refresh token, revogação de JWT no servidor ou recuperação de senha.

@@ -18,8 +18,8 @@ Validação automatizada realizada:
 
 - 8 testes da API: JWT, isolamento entre contas, persistência após recriar API,
   busca, hash de senha e tentativas de manipular o dono dos favoritos.
-- 31 testes Flutter: transporte, armazenamento, timeout, JSON, 401, favoritos,
-  navegação e troca de conta.
+- 35 testes Flutter: transporte, armazenamento, timeout, JSON, 401, cadastro,
+  detalhes, favoritos, busca, navegação e troca de conta.
 - `flutter analyze`: sem problemas; `flutter build web`: concluído.
 - A compilação Web emite aviso sobre fonte Cupertino. Não impede a compilação.
 - A versão instalada do Starlette emite aviso de depreciação do TestClient com

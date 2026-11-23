@@ -20,6 +20,7 @@ def section(heading, text):
 
 title('CinePocket · Comunicação segura com API REST')
 story.append(Paragraph('Relatório técnico da atividade · Flutter, JWT e favoritos por usuário', styles['Normal']))
+story.append(Paragraph('Integrantes: João Gabriel · Lukas Sodré', styles['Normal']))
 section('Implementação e identidade da conta',
     'O aplicativo comunica-se com uma API própria FastAPI por HTTPS. Cadastro cria uma conta no SQLite, '
     'armazenando somente hash Argon2id da senha. O login envia e-mail/senha em JSON e extrai access_token '
@@ -65,8 +66,8 @@ section('Erros, testes e dificuldades',
     'O app trata servidor indisponível, timeout de 15 segundos, credenciais inválidas, token expirado, '
     'JSON inválido e falhas de leitura/gravação/exclusão do cofre. Um favorito só é confirmado localmente '
     'após sucesso no servidor. Os 8 testes do backend verificam isolamento, persistência após reiniciar '
-    'a API, hash de senha e rejeição de tokens inválidos. Os 31 testes Flutter cobrem contrato HTTP, '
-    'armazenamento, erros, busca, navegação e troca A → B → A. Análise Flutter e compilação Web passaram. '
+    'a API, hash de senha e rejeição de tokens inválidos. Os 35 testes Flutter cobrem contrato HTTP, '
+    'armazenamento, erros, cadastro, detalhes, busca, navegação e troca A → B → A. Análise Flutter e compilação Web passaram. '
     'As dificuldades principais foram relacionar filmes externos a contas próprias, limpar caches na '
     'troca de sessão e configurar certificados locais. Testes usam um cofre substituível; ainda é '
     'necessário validar Keychain/Keystore em Android/iOS. A implementação é didática e não inclui '

@@ -62,6 +62,7 @@ class _LoginScreenState extends State<LoginScreen> {
           .login(_email.text.trim(), _password.text);
       _password.clear();
       if (!mounted) return;
+      ScaffoldMessenger.of(context).clearSnackBars();
       Navigator.of(context)
           .pushNamedAndRemoveUntil(RouteNames.consultation, (_) => false);
     } on ApiFailure catch (error) {

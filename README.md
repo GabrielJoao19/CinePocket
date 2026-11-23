@@ -41,6 +41,4 @@ cofre, falhas de comunicação, JSON, navegação, busca e troca de contas.
 Relatório e evidências da entrega devem acompanhar o código em `docs/entrega/`.
 Capturas Web demonstram o fluxo, mas não substituem teste do cofre em Android/iOS.
 
-A interface ativa é a consulta autenticada de filmes, detalhes e favoritos.
-Os arquivos antigos do protótipo visual não são usados como fonte de filmes nem
-como favoritos pré-carregados no fluxo autenticado.
+A interface ativa é a consulta autenticada de filmes, cadastro, detalhes e favoritos.
