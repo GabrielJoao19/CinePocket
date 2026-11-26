@@ -46,3 +46,12 @@ app.*.map.json
 
 # Widget Preview related
 .widget_preview/
+
+# Backend: dados privados, ambientes e certificados locais
+backend/.venv/
+backend/data/
+backend/.env
+backend/.certs/
+**/__pycache__/
+.pytest_cache/
+output/playwright/

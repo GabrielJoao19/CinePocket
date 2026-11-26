@@ -1,5 +1,5 @@
 name: cinepocket
-description: Catálogo de filmes CinePocket (somente layout, sem API ainda).
+description: Catálogo de filmes CinePocket com autenticação JWT e API HTTPS.
 publish_to: "none"
 version: 1.0.0+1
 
@@ -10,6 +10,8 @@ dependencies:
   flutter:
     sdk: flutter
   provider: ^6.1.2
+  http: ^1.6.0
+  flutter_secure_storage: ^10.0.0
 
 dev_dependencies:
   flutter_test:

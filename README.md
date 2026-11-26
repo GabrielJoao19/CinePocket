@@ -1,56 +1,43 @@
 # CinePocket
 
-## Sobre o projeto
+Aplicação Flutter para a atividade de comunicação segura com uma API REST JWT.
+Inclui API própria FastAPI/SQLite para contas reais do projeto e favoritos
+persistentes separados por usuário. O catálogo vem da Studio Ghibli API.
 
-O **CinePocket** é um aplicativo mobile para quem gosta de cinema. A proposta é
-oferecer uma experiência inspirada em plataformas como o IMDb, permitindo
-descobrir filmes, consultar informações sobre cada título e registrar opiniões
-de forma simples e prática.
+O Flutter chama somente a API própria: cadastro, login, identidade, filmes,
+busca e favoritos. Após login, grava o JWT em `flutter_secure_storage`, recupera
+o token para cada requisição protegida e consulta os filmes automaticamente.
+HTTP 401 apaga sessão e dados em memória e retorna ao login. Logout também
+limpa a coleção local; novo login recupera do servidor apenas os favoritos da conta.
 
-Com o aplicativo, o usuário pode encontrar filmes por meio da busca, conhecer
-detalhes como sinopse, gênero e nota, salvar títulos favoritos e organizar
-melhor o que deseja assistir. A interface foi pensada para tornar a descoberta
-de novos filmes rápida e agradável, diretamente pelo celular.
+## Executar
 
-## Principais funcionalidades
+Veja [as instruções do servidor HTTPS](backend/README.md), incluindo configuração
+de certificado confiável para desenvolvimento local.
 
-- Explorar filmes em destaque e recomendações;
-- Buscar filmes pelo título;
-- Visualizar detalhes, sinopse, gênero e avaliação;
-- Classificar filmes de acordo com a opinião do usuário;
-- Adicionar e consultar filmes favoritos;
-- Acessar e personalizar as configurações do aplicativo.
+```sh
+flutter pub get
+flutter run --dart-define=API_BASE_URL=https://seu-servidor
+```
 
-## Objetivo
+Não existem credenciais públicas pré-configuradas. Use **Criar conta** e cadastre
+duas contas para demonstrar o isolamento dos favoritos. A chave de assinatura
+JWT existe somente no servidor; não a inclua no aplicativo ou repositório.
 
-O objetivo do CinePocket é centralizar a descoberta e a avaliação de filmes em
-um único aplicativo, criando um espaço pessoal para acompanhar títulos,
-compartilhar opiniões e decidir o que assistir em seguida.
+## Verificar
 
-## Tecnologias
+```sh
+flutter analyze
+flutter test
+flutter build web
+```
 
-- Flutter;
-- Dart;
-- Android, iOS, Web, Windows, macOS e Linux.
+Os testes do servidor estão em `backend/tests`; os testes Flutter cobrem Bearer,
+cofre, falhas de comunicação, JSON, navegação, busca e troca de contas.
 
-## Layout da aplicação
+- [Justificativa, implementação comentada e evidências](docs/justificativas/implementacao-comunicacao-segura.md)
+- [Contrato da API e teste com duas contas](backend/README.md)
 
-> Adicione abaixo as imagens do layout final do aplicativo.
+Capturas Web demonstram o fluxo, mas não substituem teste do cofre em Android/iOS.
 
-### Tela inicial
-
-![Tela inicial do CinePocket](docs/images/tela-inicial.png)
-
-### Detalhes do filme!
-
-![Busca e detalhes do filme no CinePocket](docs/images/filme.png)
-
-### Favoritos e avaliações
-
-![Favoritos e avaliações do CinePocket](docs/images/favoritos-e-avaliacoes.png)
-
-## Protótipo no Figma
-
-Confira o protótipo e o design das telas no Figma:
-
-[Acessar o projeto no Figma](https://www.figma.com/design/76YfCCueANLcsmkFRGOohV/Mobile?node-id=0-1&p=f&t=inGqQ2fY1eoa01DK-0)
+A interface ativa é a consulta autenticada de filmes, cadastro, detalhes e favoritos.
